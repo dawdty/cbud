@@ -3,13 +3,16 @@
     "name": "cbud",
     "slug": "cbud",
     "version": "1.0.0",
+    "scheme": "cbud",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dawdty.cbud"
     },
     "android": {
+      "package": "com.dawdty.cbud",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -20,6 +23,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "@clerk/expo",
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
   }
 }
