@@ -1,6 +1,6 @@
 import { ClerkProvider, useAuth, useSignIn, useSignUp, useUser } from '@clerk/expo';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { tokenCache } from '@clerk/expo/token-cache';
@@ -30,10 +30,13 @@ function AuthScreen() {
   const [mode, setMode] = useState<AuthMode>('sign-in');
   const [emailAddress, setEmailAddress] = useState('');
   const [emailCursorPosition, setEmailCursorPosition] = useState(0);
+  const [emailCursorTarget, setEmailCursorTarget] = useState<{ x: number; y: number }>();
+  const [emailTypingRevision, setEmailTypingRevision] = useState(0);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const emailInputRef = useRef<TextInput>(null);
   const [activeField, setActiveField] = useState<BuddyActiveField>();
 
   const isSubmitting = signInFetchStatus === 'fetching' || signUpFetchStatus === 'fetching';
@@ -108,6 +111,21 @@ function AuthScreen() {
     setActiveField(undefined);
   };
 
+  const updateEmailCursorPosition = (position: number) => {
+    setEmailCursorPosition(position);
+    requestAnimationFrame(() => {
+      emailInputRef.current?.measureInWindow((x, y, width, height) => {
+        const cursorX = Math.min(x + width - 16, x + 16 + position * 8);
+        setEmailCursorTarget({ x: cursorX, y: y + height / 2 });
+      });
+    });
+  };
+
+  const handleEmailChange = (value: string) => {
+    setEmailAddress(value);
+    setEmailTypingRevision((revision) => (value ? revision + 1 : 0));
+  };
+
   if (!isLoaded) {
     return (
       <View style={styles.loading}>
@@ -150,7 +168,7 @@ function AuthScreen() {
                   : 'make an account to get started.'}
             </Text>
           </View>
-          <Buddy activeField={activeField} emailCursorPosition={emailCursorPosition} hasError={Boolean(errorMessage)} />
+          <Buddy activeField={activeField} emailCursorTarget={emailAddress ? emailCursorTarget : undefined} emailTypingRevision={emailTypingRevision} hasError={Boolean(errorMessage)} />
         </View>
 
         {isVerifying ? (
@@ -178,9 +196,13 @@ function AuthScreen() {
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
-              onChangeText={setEmailAddress}
-              onSelectionChange={({ nativeEvent }) => setEmailCursorPosition(nativeEvent.selection.start)}
-              onFocus={() => setActiveField('email')}
+              ref={emailInputRef}
+              onChangeText={handleEmailChange}
+              onSelectionChange={({ nativeEvent }) => updateEmailCursorPosition(nativeEvent.selection.start)}
+              onFocus={() => {
+                setActiveField('email');
+                updateEmailCursorPosition(emailCursorPosition);
+              }}
               onBlur={() => setActiveField(undefined)}
               placeholder="email address"
               placeholderTextColor="#b6465f"
