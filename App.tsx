@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { tokenCache } from '@clerk/expo/token-cache';
-import { Buddy, type BuddyActiveField } from './components/Buddy';
+import { Buddy, CelebratingBuddy, type BuddyAnimation, type BuddyEyes, type BuddyGaze } from './components/buddy/index';
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -13,6 +13,7 @@ if (!publishableKey) {
 }
 
 type AuthMode = 'sign-in' | 'sign-up';
+type ActiveField = 'email' | 'password' | 'code';
 
 export default function App() {
   return (
@@ -36,10 +37,16 @@ function AuthScreen() {
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [errorRevision, setErrorRevision] = useState(0);
   const emailInputRef = useRef<TextInput>(null);
-  const [activeField, setActiveField] = useState<BuddyActiveField>();
+  const [activeField, setActiveField] = useState<ActiveField>();
 
   const isSubmitting = signInFetchStatus === 'fetching' || signUpFetchStatus === 'fetching';
+
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setErrorRevision((revision) => revision + 1);
+  };
 
   const finalizeSignIn = async () => {
     await signIn.finalize({ navigate: () => undefined });
@@ -53,34 +60,34 @@ function AuthScreen() {
     setErrorMessage(undefined);
 
     if (!emailAddress || !password) {
-      setErrorMessage('enter your email and password.');
+      showError('enter your email and password.');
       return;
     }
 
     if (mode === 'sign-in') {
       const { error } = await signIn.password({ emailAddress, password });
       if (error) {
-        setErrorMessage(toLowercaseError(error));
+        showError(toLowercaseError(error));
         return;
       }
 
       if (signIn.status === 'complete') {
         await finalizeSignIn();
       } else {
-        setErrorMessage('this sign in needs an additional verification step.');
+        showError('this sign in needs an additional verification step.');
       }
       return;
     }
 
     const { error } = await signUp.password({ emailAddress, password });
     if (error) {
-      setErrorMessage(toLowercaseError(error));
+      showError(toLowercaseError(error));
       return;
     }
 
     const { error: sendError } = await signUp.verifications.sendEmailCode();
     if (sendError) {
-      setErrorMessage(toLowercaseError(sendError));
+      showError(toLowercaseError(sendError));
       return;
     }
 
@@ -92,14 +99,14 @@ function AuthScreen() {
     const { error } = await signUp.verifications.verifyEmailCode({ code });
 
     if (error) {
-      setErrorMessage(toLowercaseError(error));
+      showError(toLowercaseError(error));
       return;
     }
 
     if (signUp.status === 'complete') {
       await finalizeSignUp();
     } else {
-      setErrorMessage('your account still needs more information.');
+      showError('your account still needs more information.');
     }
   };
 
@@ -126,6 +133,11 @@ function AuthScreen() {
     setEmailTypingRevision((revision) => (value ? revision + 1 : 0));
   };
 
+  const buddyGaze = getBuddyGaze(activeField, emailAddress ? emailCursorTarget : undefined);
+  const buddyEyes: BuddyEyes = activeField === 'password' ? 'closed' : 'open';
+  const buddyAnimation: BuddyAnimation = errorMessage ? 'error' : activeField === 'email' && emailTypingRevision > 0 ? 'curious' : 'idle';
+  const buddyAnimationKey = errorMessage ? `error-${errorRevision}` : `typing-${emailTypingRevision}`;
+
   if (!isLoaded) {
     return (
       <View style={styles.loading}>
@@ -144,7 +156,7 @@ function AuthScreen() {
               <Text style={styles.heading}>welcome{user?.firstName ? `, ${user.firstName.toLowerCase()}` : ''}</Text>
               <Text style={styles.copy}>you’re signed in.</Text>
             </View>
-            <Buddy celebrate />
+            <CelebratingBuddy />
           </View>
           <PortalButton label="sign out" onPress={() => signOut()} />
         </View>
@@ -168,7 +180,7 @@ function AuthScreen() {
                   : 'make an account to get started.'}
             </Text>
           </View>
-          <Buddy activeField={activeField} emailCursorTarget={emailAddress ? emailCursorTarget : undefined} emailTypingRevision={emailTypingRevision} hasError={Boolean(errorMessage)} />
+          <Buddy animation={buddyAnimation} animationKey={buddyAnimationKey} eyes={buddyEyes} gaze={buddyGaze} />
         </View>
 
         {isVerifying ? (
@@ -233,6 +245,19 @@ function AuthScreen() {
       <StatusBar style="dark" />
     </SafeAreaView>
   );
+}
+
+function getBuddyGaze(activeField: ActiveField | undefined, emailCursorTarget: { x: number; y: number } | undefined): BuddyGaze | undefined {
+  if (activeField === 'email' && emailCursorTarget) {
+    return { type: 'point', ...emailCursorTarget };
+  }
+  if (activeField === 'password') {
+    return { type: 'offset', x: 5.5, y: -6 };
+  }
+  if (activeField === 'code') {
+    return { type: 'offset', x: 4, y: 0 };
+  }
+  return undefined;
 }
 
 function PortalButton({ disabled, label, onPress }: { disabled?: boolean; label: string; onPress: () => void }) {
