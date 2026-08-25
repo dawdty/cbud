@@ -8,6 +8,7 @@ import { Buddy, type BuddyAnimation, type BuddyEyes, type BuddyGaze } from './co
 
 type AuthMode = 'sign-in' | 'sign-up';
 type ActiveField = 'email' | 'password' | 'code';
+type VerificationMode = AuthMode | undefined;
 
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -21,13 +22,14 @@ export default function App() {
   const [emailTypingRevision, setEmailTypingRevision] = useState(0);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationMode, setVerificationMode] = useState<VerificationMode>();
   const [errorMessage, setErrorMessage] = useState<string>();
   const [errorRevision, setErrorRevision] = useState(0);
   const emailInputRef = useRef<TextInput>(null);
   const [activeField, setActiveField] = useState<ActiveField>();
 
   const isSubmitting = signInFetchStatus === 'fetching' || signUpFetchStatus === 'fetching';
+  const isVerifying = verificationMode !== undefined;
 
   const showError = (message: string) => {
     setErrorMessage(message);
@@ -47,23 +49,19 @@ export default function App() {
   const handleSubmit = async () => {
     setErrorMessage(undefined);
 
-    if (!emailAddress || !password) {
-      showError('enter your email and password.');
+    if (!emailAddress || (mode === 'sign-up' && !password)) {
+      showError(mode === 'sign-in' ? 'enter your email address.' : 'enter your email and password.');
       return;
     }
 
     if (mode === 'sign-in') {
-      const { error } = await signIn.password({ emailAddress, password });
+      const { error } = await signIn.emailCode.sendCode({ emailAddress });
       if (error) {
         showError(toLowercaseError(error));
         return;
       }
 
-      if (signIn.status === 'complete') {
-        await finalizeSignIn();
-      } else {
-        showError('this sign in needs an additional verification step.');
-      }
+      setVerificationMode('sign-in');
       return;
     }
 
@@ -79,11 +77,28 @@ export default function App() {
       return;
     }
 
-    setIsVerifying(true);
+    setVerificationMode('sign-up');
   };
 
   const handleVerification = async () => {
     setErrorMessage(undefined);
+
+    if (verificationMode === 'sign-in') {
+      const { error } = await signIn.emailCode.verifyCode({ code });
+
+      if (error) {
+        showError(toLowercaseError(error));
+        return;
+      }
+
+      if (signIn.status === 'complete') {
+        await finalizeSignIn();
+      } else {
+        showError('this sign in could not be completed.');
+      }
+      return;
+    }
+
     const { error } = await signUp.verifications.verifyEmailCode({ code });
 
     if (error) {
@@ -100,7 +115,15 @@ export default function App() {
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
-    setIsVerifying(false);
+    setVerificationMode(undefined);
+    setCode('');
+    setErrorMessage(undefined);
+    setActiveField(undefined);
+  };
+
+  const returnToSignIn = () => {
+    void signIn.reset();
+    setVerificationMode(undefined);
     setCode('');
     setErrorMessage(undefined);
     setActiveField(undefined);
@@ -149,7 +172,7 @@ export default function App() {
               {isVerifying
                 ? 'enter the verification code we sent you.'
                 : mode === 'sign-in'
-                  ? 'sign in to continue.'
+                  ? 'we’ll email you a sign-in code.'
                   : 'make an account to get started.'}
             </Text>
           </View>
@@ -170,8 +193,8 @@ export default function App() {
               style={styles.input}
               value={code}
             />
-            <PortalButton disabled={isSubmitting} label={isSubmitting ? 'verifying…' : 'verify email'} onPress={handleVerification} />
-            <Pressable onPress={() => setIsVerifying(false)}>
+            <PortalButton disabled={isSubmitting} label={isSubmitting ? 'verifying…' : verificationMode === 'sign-in' ? 'verify and sign in' : 'verify email'} onPress={handleVerification} />
+            <Pressable onPress={verificationMode === 'sign-in' ? returnToSignIn : () => setVerificationMode(undefined)}>
               <Text style={styles.textButton}>back</Text>
             </Pressable>
           </>
@@ -194,19 +217,21 @@ export default function App() {
               style={styles.input}
               value={emailAddress}
             />
-            <TextInput
-              autoCapitalize="none"
-              autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
-              onChangeText={setPassword}
-              onFocus={() => setActiveField('password')}
-              onBlur={() => setActiveField(undefined)}
-              placeholder="password"
-              placeholderTextColor="#b6465f"
-              secureTextEntry
-              style={styles.input}
-              value={password}
-            />
-            <PortalButton disabled={isSubmitting} label={isSubmitting ? 'one moment…' : mode === 'sign-in' ? 'sign in' : 'create account'} onPress={handleSubmit} />
+            {mode === 'sign-up' ? (
+              <TextInput
+                autoCapitalize="none"
+                autoComplete="new-password"
+                onChangeText={setPassword}
+                onFocus={() => setActiveField('password')}
+                onBlur={() => setActiveField(undefined)}
+                placeholder="password"
+                placeholderTextColor="#b6465f"
+                secureTextEntry
+                style={styles.input}
+                value={password}
+              />
+            ) : null}
+            <PortalButton disabled={isSubmitting} label={isSubmitting ? 'one moment…' : mode === 'sign-in' ? 'send sign-in code' : 'create account'} onPress={handleSubmit} />
             <Pressable onPress={() => switchMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}>
               <Text style={styles.textButton}>{mode === 'sign-in' ? 'new here? create an account' : 'already have an account? sign in'}</Text>
             </Pressable>
