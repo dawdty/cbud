@@ -38,7 +38,7 @@ function canvasProfileUrl(canvasUrl: string): string {
     throw new Error('Enter your school Canvas URL');
   }
 
-  return new URL('/profile', url.origin).toString();
+  return new URL('/profile/settings', url.origin).toString();
 }
 
 export default function PreferencesPage() {
@@ -336,10 +336,10 @@ export default function PreferencesPage() {
                   value={canvasUrl}
                 />
                 <Text style={styles.helpText}>
-                  canvas → account → settings → approved integrations → + new access token
+                  sign in to canvas, then create a new access token on your settings page
                 </Text>
-                <Pressable accessibilityLabel="Open Canvas profile" onPress={() => void handleOpenCanvas()}>
-                  <Text style={styles.linkText}>open canvas to find it ↗</Text>
+                <Pressable accessibilityLabel="Sign in and open Canvas settings" onPress={() => void handleOpenCanvas()}>
+                  <Text style={styles.linkText}>sign in &amp; open canvas settings ↗</Text>
                 </Pressable>
                 <TextInput
                   autoCapitalize="none"
