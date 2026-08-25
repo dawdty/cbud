@@ -1,31 +1,17 @@
-import { ClerkProvider, useAuth, useSignIn, useSignUp, useUser } from '@clerk/expo';
+import { useAuth, useSignIn, useSignUp } from '@clerk/expo';
 import { StatusBar } from 'expo-status-bar';
+import { Redirect, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { tokenCache } from '@clerk/expo/token-cache';
-import { Buddy, CelebratingBuddy, type BuddyAnimation, type BuddyEyes, type BuddyGaze } from './components/buddy/index';
-
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-if (!publishableKey) {
-  throw new Error('Set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in .env before starting cbud.');
-}
+import { Buddy, type BuddyAnimation, type BuddyEyes, type BuddyGaze } from './components/buddy/index';
 
 type AuthMode = 'sign-in' | 'sign-up';
 type ActiveField = 'email' | 'password' | 'code';
 
 export default function App() {
-  return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <AuthScreen />
-    </ClerkProvider>
-  );
-}
-
-function AuthScreen() {
-  const { isLoaded, isSignedIn, signOut } = useAuth();
-  const { user } = useUser();
+  const { isLoaded, isSignedIn } = useAuth();
+  const router = useRouter();
   const { signIn, fetchStatus: signInFetchStatus } = useSignIn();
   const { signUp, fetchStatus: signUpFetchStatus } = useSignUp();
   const [mode, setMode] = useState<AuthMode>('sign-in');
@@ -50,10 +36,12 @@ function AuthScreen() {
 
   const finalizeSignIn = async () => {
     await signIn.finalize({ navigate: () => undefined });
+    router.replace('/home');
   };
 
   const finalizeSignUp = async () => {
     await signUp.finalize({ navigate: () => undefined });
+    router.replace('/home');
   };
 
   const handleSubmit = async () => {
@@ -147,22 +135,7 @@ function AuthScreen() {
   }
 
   if (isSignedIn) {
-    return (
-      <SafeAreaView style={styles.screen}>
-        <View style={styles.portal}>
-          <View style={styles.introRow}>
-            <View style={styles.introCopy}>
-              <Text style={styles.wordmark}>cbud</Text>
-              <Text style={styles.heading}>welcome{user?.firstName ? `, ${user.firstName.toLowerCase()}` : ''}</Text>
-              <Text style={styles.copy}>you’re signed in.</Text>
-            </View>
-            <CelebratingBuddy />
-          </View>
-          <PortalButton label="sign out" onPress={() => signOut()} />
-        </View>
-        <StatusBar style="dark" />
-      </SafeAreaView>
-    );
+    return <Redirect href="/home" />;
   }
 
   return (

@@ -64,7 +64,7 @@ export function Buddy({
             styles.shadow,
             {
               opacity: shadowOpacity,
-              transform: [{ scaleX: shadowScale }, { scaleX: hopShadowScale }, { scaleY: 0.5 }],
+              transform: [{ translateX: animated.wobble }, { scaleX: shadowScale }, { scaleX: hopShadowScale }, { scaleY: 0.5 }],
             },
           ]}
         />
