@@ -1,4 +1,6 @@
 import { useAuth, useUser } from '@clerk/expo';
+import { fetch as expoFetch } from 'expo/fetch';
+import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -20,10 +22,31 @@ import Markdown from 'react-native-markdown-renderer';
 import { Buddy } from '../components/buddy';
 import { subscribeToAccountDataCleared } from '../lib/account-data-events';
 
-type ChatMessage = {
+type ChatTextMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+};
+
+type AssignmentChatItem = {
+  id: string;
+  role: 'assignment';
+  title: string;
+  dueAt: string | null;
+  htmlUrl: string | null;
+};
+
+type ChatItem = ChatTextMessage | AssignmentChatItem;
+
+type ChatStreamPayload = {
+  conversationId?: unknown;
+  assignmentId?: unknown;
+  dueAt?: unknown;
+  error?: unknown;
+  htmlUrl?: unknown;
+  message?: unknown;
+  text?: unknown;
+  title?: unknown;
 };
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
@@ -68,7 +91,7 @@ function markdownStyles(color: string, mutedColor: string, codeBackground: strin
 const userMarkdownStyles = markdownStyles('#2c0703', '#890620', '#f4e3de');
 const assistantMarkdownStyles = markdownStyles('#fff', '#ffd6de', 'rgba(255, 255, 255, 0.14)');
 
-function ChatBubble({ message }: { message: ChatMessage }) {
+function ChatBubble({ message }: { message: ChatTextMessage }) {
   const [entrance] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -110,13 +133,73 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   return bubble;
 }
 
+function assignmentDueLabel(dueAt: string | null): string {
+  if (!dueAt) return 'no due date';
+  const date = new Date(dueAt);
+  if (Number.isNaN(date.getTime())) return 'due date unavailable';
+  return `due ${new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)}`;
+}
+
+function AssignmentCard({ assignment }: { assignment: AssignmentChatItem }) {
+  const [entrance] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.spring(entrance, {
+      damping: 13,
+      mass: 0.65,
+      stiffness: 210,
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [entrance]);
+
+  return (
+    <Animated.View
+      accessibilityLabel={`${assignment.title}, ${assignmentDueLabel(assignment.dueAt)}`}
+      style={[
+        styles.assignmentCard,
+        {
+          opacity: entrance,
+          transform: [
+            { translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
+            { scale: entrance.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
+          ],
+        },
+      ]}
+    >
+      <View style={styles.assignmentCardRow}>
+        <View style={styles.assignmentCardCopy}>
+          <Text style={styles.assignmentCardTitle}>{assignment.title}</Text>
+          <Text style={styles.assignmentCardDue}>{assignmentDueLabel(assignment.dueAt)}</Text>
+        </View>
+        {assignment.htmlUrl ? (
+          <Pressable
+            accessibilityLabel={`Open ${assignment.title} in Canvas`}
+            accessibilityRole="link"
+            hitSlop={8}
+            onPress={() => void Linking.openURL(assignment.htmlUrl as string).catch(() => undefined)}
+            style={({ pressed }) => [styles.assignmentLink, pressed && styles.assignmentLinkPressed]}
+          >
+            <Text style={styles.assignmentLinkIcon}>↗</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function HomePage() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const router = useRouter();
-  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const listRef = useRef<FlatList<ChatItem>>(null);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,9 +271,9 @@ export default function HomePage() {
         };
         if (!response.ok || typeof body.conversationId !== 'string' || !Array.isArray(body.messages)) return;
 
-        const restored = body.messages.filter((candidate): candidate is ChatMessage => {
+        const restored = body.messages.filter((candidate): candidate is ChatTextMessage => {
           if (!candidate || typeof candidate !== 'object') return false;
-          const value = candidate as Partial<ChatMessage>;
+          const value = candidate as Partial<ChatTextMessage>;
           return (
             typeof value.id === 'string' &&
             (value.role === 'user' || value.role === 'assistant') &&
@@ -228,7 +311,9 @@ export default function HomePage() {
       return;
     }
 
-    const userMessage: ChatMessage = { id: `${Date.now()}-user`, role: 'user', content };
+    const turnId = Date.now();
+    const assistantMessageId = `${turnId}-assistant`;
+    const userMessage: ChatTextMessage = { id: `${turnId}-user`, role: 'user', content };
     setMessages((current) => [...current, userMessage]);
     setMessage('');
     setError(null);
@@ -245,10 +330,11 @@ export default function HomePage() {
         throw new Error('Your session expired. Please sign in again.');
       }
 
-      const chatResponse = await fetch(`${apiUrl}/chat`, {
+      const chatResponse = await expoFetch(`${apiUrl}/chat/stream`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
+          Accept: 'text/event-stream',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -256,30 +342,102 @@ export default function HomePage() {
           ...(conversationId ? { conversationId } : {}),
         }),
       });
-      const body = (await chatResponse.json()) as {
-        conversationId?: unknown;
-        error?: unknown;
-        message?: unknown;
+      if (!chatResponse.ok) {
+        const body = await chatResponse.json().catch(() => null) as ChatStreamPayload | null;
+        throw new Error(typeof body?.error === 'string' ? body.error : 'cbud could not reply.');
+      }
+      if (!chatResponse.body) {
+        throw new Error('cbud returned no response stream.');
+      }
+
+      const reader = chatResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let receivedDone = false;
+
+      const updateAssistant = (text: string, replace = false) => {
+        setMessages((current) => {
+          const existingIndex = current.findIndex((item) => item.id === assistantMessageId);
+          if (existingIndex < 0) {
+            return [...current, { id: assistantMessageId, role: 'assistant', content: text }];
+          }
+
+          const updated = [...current];
+          const existing = updated[existingIndex];
+          if (existing.role !== 'assistant') return current;
+          updated[existingIndex] = {
+            ...existing,
+            content: replace ? text : existing.content + text,
+          };
+          return updated;
+        });
       };
 
-      if (!chatResponse.ok) {
-        throw new Error(typeof body.error === 'string' ? body.error : 'cbud could not reply.');
+      const processEvent = (rawEvent: string) => {
+        let event = 'message';
+        const dataLines: string[] = [];
+        for (const line of rawEvent.split(/\r?\n/)) {
+          if (line.startsWith('event:')) event = line.slice(6).trim();
+          if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+        }
+        if (dataLines.length === 0) return;
+
+        const payload = JSON.parse(dataLines.join('\n')) as ChatStreamPayload;
+        if (event === 'start' && typeof payload.conversationId === 'string') {
+          setConversationId(payload.conversationId);
+        } else if (event === 'delta' && typeof payload.text === 'string') {
+          updateAssistant(payload.text);
+        } else if (event === 'reset') {
+          setMessages((current) => current.filter((item) => item.id !== assistantMessageId));
+        } else if (
+          event === 'assignment' &&
+          typeof payload.assignmentId === 'string' &&
+          typeof payload.title === 'string' &&
+          (payload.dueAt === null || typeof payload.dueAt === 'string') &&
+          (payload.htmlUrl === null || typeof payload.htmlUrl === 'string')
+        ) {
+          const assignmentId = `${turnId}-assignment-${payload.assignmentId}`;
+          setMessages((current) => current.some((item) => item.id === assignmentId)
+            ? current
+            : [...current, {
+                id: assignmentId,
+                role: 'assignment',
+                title: payload.title as string,
+                dueAt: payload.dueAt as string | null,
+                htmlUrl: payload.htmlUrl as string | null,
+              }]);
+        } else if (event === 'done') {
+          if (typeof payload.conversationId !== 'string' || typeof payload.message !== 'string') {
+            throw new Error('cbud returned an invalid conversation.');
+          }
+          setConversationId(payload.conversationId);
+          updateAssistant(payload.message, true);
+          receivedDone = true;
+        } else if (event === 'error') {
+          throw new Error(typeof payload.error === 'string' ? payload.error : 'cbud could not reply.');
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+
+        let separator = buffer.match(/\r?\n\r?\n/);
+        while (separator?.index !== undefined) {
+          const event = buffer.slice(0, separator.index);
+          buffer = buffer.slice(separator.index + separator[0].length);
+          processEvent(event);
+          separator = buffer.match(/\r?\n\r?\n/);
+        }
+
+        if (done) break;
       }
 
-      if (typeof body.message !== 'string' || !body.message.trim()) {
-        throw new Error('cbud returned an empty reply.');
-      }
+      if (buffer.trim()) processEvent(buffer);
+      if (!receivedDone) throw new Error('cbud response ended unexpectedly.');
 
-      if (typeof body.conversationId !== 'string') {
-        throw new Error('cbud returned an invalid conversation.');
-      }
-
-      setConversationId(body.conversationId);
-      setMessages((current) => [
-        ...current,
-        { id: `${Date.now()}-assistant`, role: 'assistant', content: body.message as string },
-      ]);
     } catch (sendError) {
+      setMessages((current) => current.filter((item) => item.id !== assistantMessageId));
       setError(sendError instanceof Error ? sendError.message : 'cbud could not reply.');
     } finally {
       setIsSending(false);
@@ -318,7 +476,9 @@ export default function HomePage() {
                   onContentSizeChange={() => requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }))}
                   onLayout={() => requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }))}
                   ref={listRef}
-                  renderItem={({ item }) => <ChatBubble message={item} />}
+                  renderItem={({ item }) => item.role === 'assignment'
+                    ? <AssignmentCard assignment={item} />
+                    : <ChatBubble message={item} />}
                   scrollEnabled
                   showsVerticalScrollIndicator
                   style={styles.messages}
@@ -384,6 +544,14 @@ const styles = StyleSheet.create({
   bubble: { borderRadius: 18, maxWidth: '84%', paddingHorizontal: 15, paddingVertical: 11 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#fff8f5', borderBottomRightRadius: 5 },
   assistantBubble: { alignSelf: 'flex-start', backgroundColor: '#890620', borderBottomLeftRadius: 5 },
+  assignmentCard: { alignSelf: 'stretch', backgroundColor: '#fff8f5', borderColor: '#890620', borderRadius: 14, borderWidth: 1, marginHorizontal: 8, paddingHorizontal: 15, paddingVertical: 12 },
+  assignmentCardRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  assignmentCardCopy: { flex: 1, gap: 4 },
+  assignmentCardTitle: { color: '#2c0703', fontSize: 16, fontWeight: '700', lineHeight: 21 },
+  assignmentCardDue: { color: '#79534c', fontSize: 12, lineHeight: 16 },
+  assignmentLink: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 17, height: 34, justifyContent: 'center', width: 34 },
+  assignmentLinkPressed: { opacity: 0.7 },
+  assignmentLinkIcon: { color: '#fff', fontSize: 18, fontWeight: '800', lineHeight: 20 },
   fixedBuddy: { alignItems: 'center', bottom: 5, left: 0, position: 'absolute', right: 0, zIndex: 1 },
   errorOverlay: { bottom: 8, color: '#890620', fontSize: 14, left: 20, position: 'absolute', right: 20, textAlign: 'center' },
   composer: { alignItems: 'center', flexDirection: 'row', gap: 10 },

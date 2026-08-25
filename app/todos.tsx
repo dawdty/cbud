@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/expo';
+import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -18,6 +19,7 @@ type DetectedAssignment = {
   title: string;
   course: string | null;
   dueAt: string | null;
+  htmlUrl: string | null;
   submitted: boolean | null;
 };
 
@@ -31,6 +33,7 @@ function isDetectedAssignment(value: unknown): value is DetectedAssignment {
     typeof candidate.title === 'string' &&
     (candidate.course === null || typeof candidate.course === 'string') &&
     (candidate.dueAt === null || typeof candidate.dueAt === 'string') &&
+    (candidate.htmlUrl === null || typeof candidate.htmlUrl === 'string') &&
     (candidate.submitted === null || typeof candidate.submitted === 'boolean')
   );
 }
@@ -148,9 +151,31 @@ export default function TodosPage() {
             ) : (
               todos.map((assignment) => (
                 <View key={assignment.memoryKey} style={styles.assignmentCard}>
-                  {assignment.course ? <Text style={styles.course}>{assignment.course}</Text> : null}
-                  <Text style={styles.assignmentTitle}>{assignment.title}</Text>
-                  <Text style={styles.due}>{dueLabel(assignment.dueAt)}</Text>
+                  <View style={styles.assignmentRow}>
+                    <View style={styles.assignmentCopy}>
+                      {assignment.course ? <Text style={styles.course}>{assignment.course}</Text> : null}
+                      <Text style={styles.assignmentTitle}>{assignment.title}</Text>
+                      <Text style={styles.due}>{dueLabel(assignment.dueAt)}</Text>
+                    </View>
+                    {assignment.htmlUrl ? (
+                      <Pressable
+                        accessibilityLabel={`Open ${assignment.title} in Canvas`}
+                        accessibilityRole="link"
+                        hitSlop={8}
+                        onPress={() => {
+                          void Linking.openURL(assignment.htmlUrl as string).catch(() => {
+                            setError('Could not open that Canvas assignment.');
+                          });
+                        }}
+                        style={({ pressed }) => [
+                          styles.assignmentLink,
+                          pressed && styles.assignmentLinkPressed,
+                        ]}
+                      >
+                        <Text style={styles.assignmentLinkIcon}>↗</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
               ))
             )}
@@ -195,6 +220,11 @@ const styles = StyleSheet.create({
   stateText: { color: '#79534c', fontSize: 14 },
   list: { gap: 10, paddingBottom: 8 },
   assignmentCard: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderRadius: 16, borderWidth: 1, gap: 6, padding: 16 },
+  assignmentRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  assignmentCopy: { flex: 1, gap: 6 },
+  assignmentLink: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 18, height: 36, justifyContent: 'center', width: 36 },
+  assignmentLinkPressed: { opacity: 0.72 },
+  assignmentLinkIcon: { color: '#fff', fontSize: 20, fontWeight: '700', lineHeight: 22 },
   course: { color: '#890620', fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
   assignmentTitle: { color: '#2c0703', fontSize: 17, fontWeight: '700', lineHeight: 22 },
   due: { color: '#79534c', fontSize: 14 },
