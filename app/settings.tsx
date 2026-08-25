@@ -41,7 +41,7 @@ export default function MenuPage() {
           style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
         >
           <View style={styles.menuItemCopy}>
-            <Text style={styles.menuItemTitle}>to do&apos;s</Text>
+            <Text style={styles.menuItemTitle}>to-dos</Text>
             <Text style={styles.menuItemSubtitle}>detected assignments and due dates</Text>
           </View>
           <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.arrow}>→</Text>

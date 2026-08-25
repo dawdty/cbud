@@ -135,7 +135,7 @@ export default function TodosPage() {
       <View style={styles.page}>
         <Text style={styles.wordmark}>cbud.</Text>
         <View style={styles.headingRow}>
-          <Text style={styles.heading}>to do&apos;s</Text>
+          <Text style={styles.heading}>to-dos</Text>
           {assignments !== null ? <Text style={styles.count}>{todos.length}</Text> : null}
         </View>
 
