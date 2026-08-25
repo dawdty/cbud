@@ -7,6 +7,7 @@ import {
   createCuriousAnimation,
   createErrorAnimation,
   createFloatAnimation,
+  createThinkingAnimation,
 } from './animationPresets';
 import type { BuddyAnimation, BuddyEyes, BuddyGaze } from './types';
 
@@ -32,6 +33,7 @@ export function useBuddyAnimation({ animation, animationKey, eyeCenter, eyes, ga
   const happyEyeScale = useAnimatedValue(1);
   const hopY = useAnimatedValue(0);
   const wobble = useAnimatedValue(0);
+  const thinkingSquishY = useAnimatedValue(1);
 
   useEffect(() => {
     const float = createFloatAnimation(floatY);
@@ -96,7 +98,26 @@ export function useBuddyAnimation({ animation, animationKey, eyeCenter, eyes, ga
   }, [animation, animationKey, wobble]);
 
   useEffect(() => {
-    const target = resolveGaze(gaze, eyeCenter);
+    thinkingSquishY.stopAnimation();
+    if (animation !== 'thinking') {
+      Animated.timing(thinkingSquishY, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    const thinking = createThinkingAnimation(thinkingSquishY);
+    thinking.start();
+    return () => thinking.stop();
+  }, [animation, animationKey, thinkingSquishY]);
+
+  useEffect(() => {
+    const target = animation === 'thinking'
+      ? { x: -5.5, y: -6.5 }
+      : resolveGaze(gaze, eyeCenter);
     const targetScale = 1 - Math.min(Math.hypot(target.x, target.y) / 20, 1) * 0.13;
     const animations = [
       Animated.spring(eyeX, { toValue: target.x, useNativeDriver: true }),
@@ -105,7 +126,7 @@ export function useBuddyAnimation({ animation, animationKey, eyeCenter, eyes, ga
     ];
     Animated.parallel(animations).start();
     return () => animations.forEach((item) => item.stop());
-  }, [eyeCenter, eyeScale, eyeX, eyeY, gaze]);
+  }, [animation, eyeCenter, eyeScale, eyeX, eyeY, gaze]);
 
   useEffect(() => {
     const isClosed = eyes === 'closed';
@@ -132,6 +153,7 @@ export function useBuddyAnimation({ animation, animationKey, eyeCenter, eyes, ga
     highlightOpacity,
     hopY,
     openEyeScale,
+    thinkingSquishY,
     wobble,
   };
 }

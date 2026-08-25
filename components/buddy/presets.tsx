@@ -11,6 +11,10 @@ export function CuriousBuddy(props: PresetProps) {
   return <Buddy {...props} animation="curious" />;
 }
 
+export function ThinkingBuddy(props: PresetProps) {
+  return <Buddy {...props} animation="thinking" />;
+}
+
 export function CelebratingBuddy(props: PresetProps) {
   return <Buddy {...props} animation="celebrate" />;
 }

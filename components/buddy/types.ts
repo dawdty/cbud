@@ -1,6 +1,6 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 
-export type BuddyAnimation = 'idle' | 'curious' | 'celebrate' | 'error';
+export type BuddyAnimation = 'idle' | 'curious' | 'thinking' | 'celebrate' | 'error';
 
 export type BuddyEyes = 'open' | 'closed';
 

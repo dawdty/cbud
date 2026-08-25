@@ -76,6 +76,7 @@ export function Buddy({
                 { translateX: animated.wobble },
                 { translateY: animated.floatY },
                 { translateY: animated.hopY },
+                { scaleY: animated.thinkingSquishY },
               ],
             },
           ]}

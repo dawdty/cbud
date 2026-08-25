@@ -43,6 +43,23 @@ export function createCuriousAnimation(curiosityScale: Animated.Value) {
   ]);
 }
 
+export function createThinkingAnimation(squishY: Animated.Value) {
+  return Animated.sequence([
+    Animated.timing(squishY, {
+      toValue: 0.9,
+      duration: 150,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }),
+    Animated.timing(squishY, {
+      toValue: 0.94,
+      duration: 240,
+      easing: Easing.out(Easing.back(1.25)),
+      useNativeDriver: true,
+    }),
+  ]);
+}
+
 export function createCelebrationAnimation({ face, eyeScale, hopY }: CelebrationValues) {
   const hop = Animated.sequence([
     Animated.delay(500),

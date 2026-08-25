@@ -562,7 +562,7 @@ export default function HomePage() {
               </Text>
             ) : null}
             <View pointerEvents="none" style={styles.fixedBuddy}>
-              <Buddy animation={isSending ? 'curious' : 'idle'} animationKey={messages.length} size={104} />
+              <Buddy animation={isSending ? 'thinking' : 'idle'} animationKey={messages.length} size={104} />
               <Text style={styles.buddyWordmark}>cbud.</Text>
             </View>
           </View>
