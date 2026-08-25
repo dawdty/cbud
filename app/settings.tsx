@@ -1,101 +1,11 @@
 import { useAuth } from '@clerk/expo';
 import { Redirect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
-type CanvasConnection = {
-  baseUrl: string;
-  canvasUserName: string;
-};
-
-type CanvasStatus =
-  | { connected: false }
-  | { connected: true; connection: CanvasConnection };
-
-const apiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
-
-function canvasProfileUrl(canvasUrl: string): string {
-  const candidate = canvasUrl.trim();
-  const url = new URL(candidate.includes('://') ? candidate : `https://${candidate}`);
-
-  if (url.protocol !== 'https:') {
-    throw new Error('Enter your school Canvas URL');
-  }
-
-  return new URL('/profile', url.origin).toString();
-}
-
-export default function SettingsPage() {
-  const { getToken, isLoaded, isSignedIn, signOut } = useAuth();
+export default function MenuPage() {
+  const { isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
-  const [canvasStatus, setCanvasStatus] = useState<CanvasStatus | null>(null);
-  const [showCanvasForm, setShowCanvasForm] = useState(false);
-  const [canvasUrl, setCanvasUrl] = useState('');
-  const [canvasAccessToken, setCanvasAccessToken] = useState('');
-  const [isSavingCanvas, setIsSavingCanvas] = useState(false);
-  const [canvasError, setCanvasError] = useState<string | null>(null);
-
-  const authorizedRequest = useCallback(
-    async (path: string, init?: RequestInit) => {
-      if (!apiUrl) {
-        throw new Error('Set EXPO_PUBLIC_API_URL to connect cbud to the API.');
-      }
-
-      const token = await getToken();
-      if (!token) {
-        throw new Error('Your session expired. Please sign in again.');
-      }
-
-      return fetch(`${apiUrl}${path}`, {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-          ...init?.headers,
-        },
-      });
-    },
-    [getToken],
-  );
-
-  const loadCanvasStatus = useCallback(async () => {
-    try {
-      const response = await authorizedRequest('/integrations/canvas');
-      const body = (await response.json()) as CanvasStatus & { error?: unknown };
-
-      if (!response.ok) {
-        throw new Error(typeof body.error === 'string' ? body.error : 'Could not load Canvas connection.');
-      }
-
-      setCanvasStatus(body);
-      setCanvasError(null);
-    } catch (error) {
-      setCanvasStatus({ connected: false });
-      setCanvasError(error instanceof Error ? error.message : 'Could not load Canvas connection.');
-    }
-  }, [authorizedRequest]);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) {
-      return;
-    }
-
-    const frame = requestAnimationFrame(() => void loadCanvasStatus());
-    return () => cancelAnimationFrame(frame);
-  }, [isLoaded, isSignedIn, loadCanvasStatus]);
 
   if (!isLoaded) {
     return (
@@ -109,177 +19,51 @@ export default function SettingsPage() {
     return <Redirect href="/" />;
   }
 
-  const handleSignOut = async () => {
-    await signOut();
-    router.replace('/');
-  };
-
-  const handleOpenCanvas = async () => {
-    try {
-      setCanvasError(null);
-      await WebBrowser.openBrowserAsync(canvasProfileUrl(canvasUrl));
-    } catch {
-      setCanvasError('Enter your school Canvas URL first.');
-    }
-  };
-
-  const handleConnectCanvas = async () => {
-    if (isSavingCanvas) {
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
       return;
     }
 
-    setIsSavingCanvas(true);
-    setCanvasError(null);
-
-    try {
-      const response = await authorizedRequest('/integrations/canvas', {
-        method: 'PUT',
-        body: JSON.stringify({ canvasUrl, accessToken: canvasAccessToken }),
-      });
-      const body = (await response.json()) as CanvasStatus & { error?: unknown };
-
-      if (!response.ok) {
-        throw new Error(typeof body.error === 'string' ? body.error : 'Could not connect Canvas.');
-      }
-
-      setCanvasStatus(body);
-      setCanvasAccessToken('');
-      setShowCanvasForm(false);
-    } catch (error) {
-      setCanvasError(error instanceof Error ? error.message : 'Could not connect Canvas.');
-    } finally {
-      setIsSavingCanvas(false);
-    }
-  };
-
-  const handleDisconnectCanvas = async () => {
-    setIsSavingCanvas(true);
-    setCanvasError(null);
-
-    try {
-      const response = await authorizedRequest('/integrations/canvas', { method: 'DELETE' });
-      if (!response.ok) {
-        const body = (await response.json()) as { error?: unknown };
-        throw new Error(typeof body.error === 'string' ? body.error : 'Could not disconnect Canvas.');
-      }
-
-      setCanvasStatus({ connected: false });
-      setCanvasUrl('');
-    } catch (error) {
-      setCanvasError(error instanceof Error ? error.message : 'Could not disconnect Canvas.');
-    } finally {
-      setIsSavingCanvas(false);
-    }
+    router.replace('/home');
   };
 
   return (
     <SafeAreaView style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.wordmark}>cbud</Text>
-          <Text style={styles.heading}>settings</Text>
+      <View style={styles.content}>
+        <Text style={styles.wordmark}>cbud</Text>
+        <Text style={styles.heading}>menu</Text>
 
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleGroup}>
-                <Text style={styles.cardTitle}>canvas</Text>
-                <Text style={styles.cardSubtitle}>
-                  {canvasStatus?.connected
-                    ? `connected as ${canvasStatus.connection.canvasUserName.toLowerCase()}`
-                    : 'connect your courses and assignments'}
-                </Text>
-              </View>
-              {canvasStatus === null ? <ActivityIndicator color="#890620" size="small" /> : null}
-            </View>
-
-            {canvasStatus?.connected ? (
-              <>
-                <Text numberOfLines={1} style={styles.connectedUrl}>
-                  {canvasStatus.connection.baseUrl}
-                </Text>
-                <Pressable
-                  accessibilityLabel="Disconnect Canvas"
-                  disabled={isSavingCanvas}
-                  onPress={() => void handleDisconnectCanvas()}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonText}>disconnect canvas</Text>
-                </Pressable>
-              </>
-            ) : showCanvasForm ? (
-              <View style={styles.canvasForm}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                  onChangeText={setCanvasUrl}
-                  placeholder="canvas.yourschool.edu"
-                  placeholderTextColor="#8f6e67"
-                  style={styles.input}
-                  value={canvasUrl}
-                />
-                <Text style={styles.helpText}>
-                  canvas → account → settings → approved integrations → + new access token
-                </Text>
-                <Pressable accessibilityLabel="Open Canvas profile" onPress={() => void handleOpenCanvas()}>
-                  <Text style={styles.linkText}>open canvas to find it ↗</Text>
-                </Pressable>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setCanvasAccessToken}
-                  placeholder="canvas access token"
-                  placeholderTextColor="#8f6e67"
-                  secureTextEntry
-                  style={styles.input}
-                  value={canvasAccessToken}
-                />
-                <Pressable
-                  accessibilityLabel="Connect Canvas"
-                  disabled={isSavingCanvas || !canvasUrl.trim() || !canvasAccessToken.trim()}
-                  onPress={() => void handleConnectCanvas()}
-                  style={[
-                    styles.primaryButton,
-                    (isSavingCanvas || !canvasUrl.trim() || !canvasAccessToken.trim()) && styles.buttonDisabled,
-                  ]}
-                >
-                  {isSavingCanvas ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>connect</Text>
-                  )}
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                accessibilityLabel="Enable Canvas"
-                onPress={() => {
-                  setCanvasError(null);
-                  setShowCanvasForm(true);
-                }}
-                style={styles.primaryButton}
-              >
-                <Text style={styles.primaryButtonText}>enable canvas</Text>
-              </Pressable>
-            )}
-
-            {canvasError ? (
-              <Text accessibilityLiveRegion="polite" style={styles.errorText}>
-                {canvasError}
-              </Text>
-            ) : null}
+        <Pressable
+          accessibilityLabel="Open to do's"
+          accessibilityRole="button"
+          onPress={() => router.push('/todos')}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+        >
+          <View style={styles.menuItemCopy}>
+            <Text style={styles.menuItemTitle}>to do&apos;s</Text>
+            <Text style={styles.menuItemSubtitle}>detected assignments and due dates</Text>
           </View>
+          <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.arrow}>→</Text>
+        </Pressable>
 
-          <View style={styles.footerActions}>
-            <Pressable accessibilityLabel="Sign out" onPress={handleSignOut} style={styles.signOutButton}>
-              <Text style={styles.signOutText}>sign out</Text>
-            </Pressable>
-            <Pressable accessibilityLabel="Back to home" onPress={() => router.replace('/home')} style={styles.backButton}>
-              <Text style={styles.backText}>back</Text>
-            </Pressable>
+        <Pressable
+          accessibilityLabel="Open settings"
+          accessibilityRole="button"
+          onPress={() => router.push('/preferences')}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+        >
+          <View style={styles.menuItemCopy}>
+            <Text style={styles.menuItemTitle}>settings</Text>
+            <Text style={styles.menuItemSubtitle}>canvas, memory, and account</Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.arrow}>→</Text>
+        </Pressable>
+
+        <Pressable accessibilityLabel="Go back" onPress={handleBack} style={styles.backButton}>
+          <Text style={styles.backText}>back</Text>
+        </Pressable>
+      </View>
       <StatusBar style="dark" />
     </SafeAreaView>
   );
@@ -287,30 +71,16 @@ export default function SettingsPage() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: '#ebd4cb', flex: 1 },
-  keyboardView: { flex: 1 },
   loading: { alignItems: 'center', backgroundColor: '#ebd4cb', flex: 1, justifyContent: 'center' },
-  content: { flexGrow: 1, gap: 16, padding: 28 },
+  content: { flex: 1, gap: 16, padding: 28 },
   wordmark: { color: '#890620', fontSize: 38, fontWeight: '800', letterSpacing: -1.5, marginBottom: 18 },
   heading: { color: '#2c0703', fontSize: 26, fontWeight: '700', letterSpacing: -0.5 },
-  card: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderRadius: 16, borderWidth: 1, gap: 14, padding: 18 },
-  cardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  cardTitleGroup: { flex: 1, gap: 3 },
-  cardTitle: { color: '#2c0703', fontSize: 19, fontWeight: '700' },
-  cardSubtitle: { color: '#79534c', fontSize: 14 },
-  connectedUrl: { color: '#79534c', fontSize: 13 },
-  canvasForm: { gap: 12 },
-  input: { backgroundColor: '#fff', borderColor: '#cda49b', borderRadius: 10, borderWidth: 1, color: '#2c0703', fontSize: 16, height: 48, paddingHorizontal: 14 },
-  helpText: { color: '#79534c', fontSize: 13, lineHeight: 19 },
-  linkText: { color: '#890620', fontSize: 14, fontWeight: '700' },
-  primaryButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 12, minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  secondaryButton: { alignItems: 'center', borderColor: '#890620', borderRadius: 12, borderWidth: 1, minHeight: 46, justifyContent: 'center', paddingHorizontal: 16 },
-  secondaryButtonText: { color: '#890620', fontSize: 15, fontWeight: '700' },
-  buttonDisabled: { backgroundColor: '#bd8d87' },
-  errorText: { color: '#890620', fontSize: 13, lineHeight: 18 },
-  footerActions: { gap: 8, marginTop: 'auto' },
-  signOutButton: { alignItems: 'center', paddingVertical: 16 },
-  signOutText: { color: '#890620', fontSize: 16, fontWeight: '700' },
-  backButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 12, paddingVertical: 16 },
+  menuItem: { alignItems: 'center', backgroundColor: '#fff8f5', borderColor: '#cda49b', borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 12, minHeight: 82, padding: 18 },
+  menuItemPressed: { opacity: 0.72 },
+  menuItemCopy: { flex: 1, gap: 3 },
+  menuItemTitle: { color: '#2c0703', fontSize: 19, fontWeight: '700' },
+  menuItemSubtitle: { color: '#79534c', fontSize: 14 },
+  arrow: { color: '#890620', fontSize: 25, lineHeight: 28 },
+  backButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 12, marginTop: 'auto', paddingVertical: 16 },
   backText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

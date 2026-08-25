@@ -144,8 +144,8 @@ export default function App() {
     setEmailTypingRevision((revision) => (value ? revision + 1 : 0));
   };
 
-  const buddyGaze = getBuddyGaze(activeField, emailAddress ? emailCursorTarget : undefined);
-  const buddyEyes: BuddyEyes = activeField === 'password' ? 'closed' : 'open';
+  const buddyGaze = getBuddyGaze(isVerifying ? 'code' : activeField, emailAddress ? emailCursorTarget : undefined);
+  const buddyEyes: BuddyEyes = activeField === 'password' || isVerifying ? 'closed' : 'open';
   const buddyAnimation: BuddyAnimation = errorMessage ? 'error' : activeField === 'email' && emailTypingRevision > 0 ? 'curious' : 'idle';
   const buddyAnimationKey = errorMessage ? `error-${errorRevision}` : `typing-${emailTypingRevision}`;
 
@@ -253,7 +253,7 @@ function getBuddyGaze(activeField: ActiveField | undefined, emailCursorTarget: {
     return { type: 'offset', x: 5.5, y: -6 };
   }
   if (activeField === 'code') {
-    return { type: 'offset', x: 4, y: 0 };
+    return { type: 'offset', x: 5.5, y: -6 };
   }
   return undefined;
 }

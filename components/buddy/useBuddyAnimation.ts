@@ -144,8 +144,8 @@ function resolveGaze(gaze: BuddyGaze | undefined, eyeCenter: { x: number; y: num
   const angle = Math.atan2(gaze.y - eyeCenter.y, gaze.x - eyeCenter.x);
   const gazeDistance = 15;
   return {
-    x: Math.cos(angle) * gazeDistance - 5,
-    y: Math.sin(angle) * gazeDistance + 10,
+    x: Math.cos(angle) * gazeDistance,
+    y: Math.sin(angle) * gazeDistance,
   };
 }
 

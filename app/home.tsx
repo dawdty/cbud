@@ -15,8 +15,10 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import Markdown from 'react-native-markdown-renderer';
 
 import { Buddy } from '../components/buddy';
+import { subscribeToAccountDataCleared } from '../lib/account-data-events';
 
 type ChatMessage = {
   id: string;
@@ -25,6 +27,46 @@ type ChatMessage = {
 };
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
+
+function markdownStyles(color: string, mutedColor: string, codeBackground: string) {
+  return {
+    root: { color },
+    text: { color, fontSize: 16, lineHeight: 22 },
+    paragraph: { marginBottom: 7, marginTop: 0 },
+    headingContainer: { marginBottom: 7, marginTop: 4 },
+    heading: { color, fontWeight: '700' as const },
+    heading1: { fontSize: 21, lineHeight: 27 },
+    heading1Container: { borderBottomWidth: 0, paddingBottom: 0 },
+    heading2: { fontSize: 19, lineHeight: 25 },
+    heading2Container: { borderBottomWidth: 0, paddingBottom: 0 },
+    heading3: { fontSize: 17, lineHeight: 23 },
+    heading4: { fontSize: 16, lineHeight: 22 },
+    heading5: { fontSize: 16, lineHeight: 22 },
+    heading6: { fontSize: 16, lineHeight: 22 },
+    list: { marginBottom: 7 },
+    listUnorderedItem: { marginTop: 2 },
+    listOrderedItem: { marginTop: 2 },
+    listUnorderedItemIcon: { color, lineHeight: 22, marginLeft: 4, marginRight: 8 },
+    listUnorderedItemText: { color, fontSize: 16, lineHeight: 22 },
+    listOrderedItemIcon: { color, lineHeight: 22, marginLeft: 4, marginRight: 8 },
+    listOrderedItemText: { color, fontSize: 16, lineHeight: 22 },
+    link: { color: mutedColor, textDecorationLine: 'underline' as const },
+    blocklink: { borderBottomColor: mutedColor },
+    blockquote: { borderLeftColor: mutedColor, marginBottom: 7, paddingHorizontal: 10 },
+    codeInline: { backgroundColor: codeBackground, color, fontSize: 14 },
+    codeBlock: { backgroundColor: codeBackground, color, fontSize: 14, lineHeight: 20, marginBottom: 7, padding: 10 },
+    pre: { marginBottom: 0 },
+    hr: { backgroundColor: mutedColor, height: 1, marginBottom: 9, marginTop: 9 },
+    table: { borderColor: mutedColor, marginBottom: 7 },
+    tableHeader: { backgroundColor: codeBackground },
+    tableHeaderCell: { borderColor: mutedColor, color },
+    tableRow: { borderColor: mutedColor },
+    tableRowCell: { borderColor: mutedColor, color },
+  };
+}
+
+const userMarkdownStyles = markdownStyles('#2c0703', '#890620', '#f4e3de');
+const assistantMarkdownStyles = markdownStyles('#fff', '#ffd6de', 'rgba(255, 255, 255, 0.14)');
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const [entrance] = useState(() => new Animated.Value(0));
@@ -55,7 +97,13 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         },
       ]}
     >
-      <Text style={[styles.bubbleText, !isUser && styles.assistantBubbleText]}>{message.content}</Text>
+      <Markdown
+        allowedImageHandlers={[]}
+        defaultImageHandler={null}
+        style={isUser ? userMarkdownStyles : assistantMarkdownStyles}
+      >
+        {message.content}
+      </Markdown>
     </Animated.View>
   );
 
@@ -69,12 +117,97 @@ export default function HomePage() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCanvasConnected, setIsCanvasConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: messages.length > 1 }));
   }, [messages.length]);
+
+  useEffect(() => subscribeToAccountDataCleared(() => {
+    setMessages([]);
+    setConversationId(null);
+    setError(null);
+  }), []);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !apiUrl) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const frame = requestAnimationFrame(() => {
+      void (async () => {
+        try {
+          const token = await getToken();
+          if (!token) {
+            return;
+          }
+
+          const response = await fetch(`${apiUrl}/integrations/canvas`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          });
+          const body = (await response.json()) as { connected?: unknown };
+          if (response.ok && typeof body.connected === 'boolean') {
+            setIsCanvasConnected(body.connected);
+          }
+        } catch (statusError) {
+          if (!(statusError instanceof Error && statusError.name === 'AbortError')) {
+            console.warn('Could not load Canvas connection status');
+          }
+        }
+      })();
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      controller.abort();
+    };
+  }, [getToken, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !apiUrl) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const response = await fetch(`${apiUrl}/chat/history`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        const body = (await response.json()) as {
+          conversationId?: unknown;
+          messages?: unknown;
+        };
+        if (!response.ok || typeof body.conversationId !== 'string' || !Array.isArray(body.messages)) return;
+
+        const restored = body.messages.filter((candidate): candidate is ChatMessage => {
+          if (!candidate || typeof candidate !== 'object') return false;
+          const value = candidate as Partial<ChatMessage>;
+          return (
+            typeof value.id === 'string' &&
+            (value.role === 'user' || value.role === 'assistant') &&
+            typeof value.content === 'string'
+          );
+        });
+        setConversationId(body.conversationId);
+        setMessages((current) => current.length === 0 ? restored : current);
+      } catch (historyError) {
+        if (!(historyError instanceof Error && historyError.name === 'AbortError')) {
+          console.warn('Could not load chat history');
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [getToken, isLoaded, isSignedIn]);
 
   if (!isLoaded) {
     return (
@@ -118,9 +251,16 @@ export default function HomePage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: content }),
+        body: JSON.stringify({
+          message: content,
+          ...(conversationId ? { conversationId } : {}),
+        }),
       });
-      const body = (await chatResponse.json()) as { error?: unknown; message?: unknown };
+      const body = (await chatResponse.json()) as {
+        conversationId?: unknown;
+        error?: unknown;
+        message?: unknown;
+      };
 
       if (!chatResponse.ok) {
         throw new Error(typeof body.error === 'string' ? body.error : 'cbud could not reply.');
@@ -130,6 +270,11 @@ export default function HomePage() {
         throw new Error('cbud returned an empty reply.');
       }
 
+      if (typeof body.conversationId !== 'string') {
+        throw new Error('cbud returned an invalid conversation.');
+      }
+
+      setConversationId(body.conversationId);
       setMessages((current) => [
         ...current,
         { id: `${Date.now()}-assistant`, role: 'assistant', content: body.message as string },
@@ -145,6 +290,18 @@ export default function HomePage() {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
         <View style={styles.portal}>
+          {isCanvasConnected === false ? (
+            <Pressable
+              accessibilityLabel="Canvas integration not enabled. Open settings."
+              onPress={() => router.push('/preferences')}
+              style={styles.canvasWarning}
+            >
+              <Text style={styles.canvasWarningIcon}>!</Text>
+              <Text style={styles.canvasWarningText}>
+                canvas integration not enabled. {"\n"}go to <Text style={styles.canvasWarningLink}>settings</Text>
+              </Text>
+            </Pressable>
+          ) : null}
           <View style={styles.chatArea}>
             <View style={styles.chatWindow}>
               {messages.length === 0 ? (
@@ -213,6 +370,10 @@ const styles = StyleSheet.create({
   loading: { alignItems: 'center', backgroundColor: '#ebd4cb', flex: 1, justifyContent: 'center' },
   keyboardView: { flex: 1 },
   portal: { flex: 1, gap: 12, padding: 20 },
+  canvasWarning: { alignItems: 'center', backgroundColor: '#890620', borderColor: '#890620', borderLeftWidth: 4, borderRadius: 10, borderWidth: 1, flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  canvasWarningIcon: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  canvasWarningText: { color: '#fff', flex: 1, fontSize: 14, fontWeight: '700' },
+  canvasWarningLink: { textDecorationLine: 'underline' },
   chatArea: { flex: 1, position: 'relative' },
   chatWindow: { bottom: 150, left: 0, position: 'absolute', right: 0, top: 0 },
   introCopy: { flex: 1, justifyContent: 'center' },
@@ -224,8 +385,6 @@ const styles = StyleSheet.create({
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#fff8f5', borderBottomRightRadius: 5 },
   assistantBubble: { alignSelf: 'flex-start', backgroundColor: '#890620', borderBottomLeftRadius: 5 },
   fixedBuddy: { alignItems: 'center', bottom: 5, left: 0, position: 'absolute', right: 0, zIndex: 1 },
-  bubbleText: { color: '#2c0703', fontSize: 16, lineHeight: 22 },
-  assistantBubbleText: { color: '#fff' },
   errorOverlay: { bottom: 8, color: '#890620', fontSize: 14, left: 20, position: 'absolute', right: 20, textAlign: 'center' },
   composer: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   iconButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 22, height: 44, justifyContent: 'center', width: 44 },
