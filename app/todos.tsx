@@ -1,8 +1,8 @@
 import { useAuth } from '@clerk/expo';
 import * as Linking from 'expo-linking';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -61,7 +61,9 @@ function assignmentOrder(left: DetectedAssignment, right: DetectedAssignment): n
 
 export default function TodosPage() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { refresh } = useLocalSearchParams<{ refresh?: string }>();
   const router = useRouter();
+  const hasLoadedOnArrival = useRef(false);
   const [assignments, setAssignments] = useState<DetectedAssignment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -80,7 +82,7 @@ export default function TodosPage() {
       const token = await getToken();
       if (!token) throw new Error('Your session expired. Please sign in again.');
 
-      const response = await fetch(`${apiUrl}/assignments`, {
+      const response = await fetch(`${apiUrl}/assignments${refreshing ? '?refresh=true' : ''}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const body = (await response.json()) as { assignments?: unknown; error?: unknown };
@@ -98,14 +100,15 @@ export default function TodosPage() {
   }, [getToken]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
+    if (!isLoaded || !isSignedIn || hasLoadedOnArrival.current) return;
+    hasLoadedOnArrival.current = true;
 
-    const frame = requestAnimationFrame(() => void loadAssignments());
+    const frame = requestAnimationFrame(() => void loadAssignments(refresh === 'true'));
     return () => cancelAnimationFrame(frame);
-  }, [isLoaded, isSignedIn, loadAssignments]);
+  }, [isLoaded, isSignedIn, loadAssignments, refresh]);
 
   const todos = useMemo(
-    () => (assignments ?? []).filter((assignment) => assignment.submitted !== true).sort(assignmentOrder),
+    () => [...(assignments ?? [])].sort(assignmentOrder),
     [assignments],
   );
 
@@ -130,7 +133,7 @@ export default function TodosPage() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.page}>
-        <Text style={styles.wordmark}>cbud</Text>
+        <Text style={styles.wordmark}>cbud.</Text>
         <View style={styles.headingRow}>
           <Text style={styles.heading}>to do&apos;s</Text>
           {assignments !== null ? <Text style={styles.count}>{todos.length}</Text> : null}
@@ -157,24 +160,45 @@ export default function TodosPage() {
                       <Text style={styles.assignmentTitle}>{assignment.title}</Text>
                       <Text style={styles.due}>{dueLabel(assignment.dueAt)}</Text>
                     </View>
-                    {assignment.htmlUrl ? (
-                      <Pressable
-                        accessibilityLabel={`Open ${assignment.title} in Canvas`}
-                        accessibilityRole="link"
-                        hitSlop={8}
-                        onPress={() => {
-                          void Linking.openURL(assignment.htmlUrl as string).catch(() => {
-                            setError('Could not open that Canvas assignment.');
-                          });
-                        }}
-                        style={({ pressed }) => [
-                          styles.assignmentLink,
-                          pressed && styles.assignmentLinkPressed,
+                    <View style={styles.assignmentActions}>
+                      <View
+                        accessibilityLabel={assignment.submitted === true
+                          ? 'Submitted'
+                          : assignment.submitted === false
+                            ? 'Not submitted'
+                            : 'Submission status unknown'}
+                        style={[
+                          styles.submissionIndicator,
+                          assignment.submitted === true
+                            ? styles.submissionIndicatorComplete
+                            : assignment.submitted === false
+                              ? styles.submissionIndicatorIncomplete
+                              : styles.submissionIndicatorUnknown,
                         ]}
                       >
-                        <Text style={styles.assignmentLinkIcon}>↗</Text>
-                      </Pressable>
-                    ) : null}
+                        <Text style={styles.submissionIndicatorText}>
+                          {assignment.submitted === true ? '✓' : assignment.submitted === false ? '×' : '?'}
+                        </Text>
+                      </View>
+                      {assignment.htmlUrl ? (
+                        <Pressable
+                          accessibilityLabel={`Open ${assignment.title} in Canvas`}
+                          accessibilityRole="link"
+                          hitSlop={8}
+                          onPress={() => {
+                            void Linking.openURL(assignment.htmlUrl as string).catch(() => {
+                              setError('Could not open that Canvas assignment.');
+                            });
+                          }}
+                          style={({ pressed }) => [
+                            styles.assignmentLink,
+                            pressed && styles.assignmentLinkPressed,
+                          ]}
+                        >
+                          <Text style={styles.assignmentLinkIcon}>↗</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
               ))
@@ -222,6 +246,12 @@ const styles = StyleSheet.create({
   assignmentCard: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderRadius: 16, borderWidth: 1, gap: 6, padding: 16 },
   assignmentRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
   assignmentCopy: { flex: 1, gap: 6 },
+  assignmentActions: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  submissionIndicator: { alignItems: 'center', borderRadius: 18, height: 36, justifyContent: 'center', width: 36 },
+  submissionIndicatorComplete: { backgroundColor: '#37734d' },
+  submissionIndicatorIncomplete: { backgroundColor: '#b3261e' },
+  submissionIndicatorUnknown: { backgroundColor: '#79534c' },
+  submissionIndicatorText: { color: '#fff', fontSize: 18, fontWeight: '800', lineHeight: 20 },
   assignmentLink: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 18, height: 36, justifyContent: 'center', width: 36 },
   assignmentLinkPressed: { opacity: 0.72 },
   assignmentLinkIcon: { color: '#fff', fontSize: 20, fontWeight: '700', lineHeight: 22 },

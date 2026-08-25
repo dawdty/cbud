@@ -1,6 +1,5 @@
 import { useAuth, useUser } from '@clerk/expo';
 import { fetch as expoFetch } from 'expo/fetch';
-import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -36,7 +35,15 @@ type AssignmentChatItem = {
   htmlUrl: string | null;
 };
 
-type ChatItem = ChatTextMessage | AssignmentChatItem;
+type CompletionActivityItem = {
+  id: string;
+  role: 'activity';
+  round: number;
+  state: 'active' | 'complete' | 'failed';
+  toolNames: string[];
+};
+
+type ChatItem = ChatTextMessage | AssignmentChatItem | CompletionActivityItem;
 
 type ChatStreamPayload = {
   conversationId?: unknown;
@@ -45,8 +52,11 @@ type ChatStreamPayload = {
   error?: unknown;
   htmlUrl?: unknown;
   message?: unknown;
+  round?: unknown;
+  state?: unknown;
   text?: unknown;
   title?: unknown;
+  toolNames?: unknown;
 };
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
@@ -146,6 +156,7 @@ function assignmentDueLabel(dueAt: string | null): string {
 }
 
 function AssignmentCard({ assignment }: { assignment: AssignmentChatItem }) {
+  const router = useRouter();
   const [entrance] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -177,19 +188,50 @@ function AssignmentCard({ assignment }: { assignment: AssignmentChatItem }) {
           <Text style={styles.assignmentCardTitle}>{assignment.title}</Text>
           <Text style={styles.assignmentCardDue}>{assignmentDueLabel(assignment.dueAt)}</Text>
         </View>
-        {assignment.htmlUrl ? (
-          <Pressable
-            accessibilityLabel={`Open ${assignment.title} in Canvas`}
-            accessibilityRole="link"
-            hitSlop={8}
-            onPress={() => void Linking.openURL(assignment.htmlUrl as string).catch(() => undefined)}
-            style={({ pressed }) => [styles.assignmentLink, pressed && styles.assignmentLinkPressed]}
-          >
-            <Text style={styles.assignmentLinkIcon}>↗</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          accessibilityLabel={`View ${assignment.title} in To Do's`}
+          accessibilityRole="link"
+          hitSlop={8}
+          onPress={() => router.push({ pathname: '/todos', params: { refresh: 'true' } })}
+          style={({ pressed }) => [styles.assignmentLink, pressed && styles.assignmentLinkPressed]}
+        >
+          <Text style={styles.assignmentLinkIcon}>→</Text>
+        </Pressable>
       </View>
     </Animated.View>
+  );
+}
+
+const toolActivityLabels: Record<string, string> = {
+  get_my_submission: 'checked submission',
+  get_my_submission_status: 'checked submission status',
+  list_assignments: 'checked assignments',
+  get_my_enrollments: 'checked courses',
+  get_my_upcoming_assignments: 'checked upcoming assignments',
+  get_my_todo_items: 'checked canvas to do items',
+  create_job: 'scheduled a job',
+  list_jobs: 'checked jobs',
+  cancel_job: 'cancelled a job',
+};
+
+function CompletionActivity({ activity }: { activity: CompletionActivityItem }) {
+  const label = activity.state === 'failed'
+    ? `stopped · step ${activity.round + 1}`
+    : activity.state === 'active'
+    ? `thinking · step ${activity.round + 1}`
+    : activity.toolNames.length > 0
+      ? `${activity.toolNames.map((name) => toolActivityLabels[name] ?? name.replaceAll('_', ' ')).join(', ')} · step ${activity.round + 1}`
+      : `finished thinking · step ${activity.round + 1}`;
+
+  return (
+    <View accessibilityLabel={label} style={styles.completionActivity}>
+      {activity.state === 'active' ? (
+        <ActivityIndicator color="#890620" size="small" />
+      ) : (
+        <Text style={styles.completionActivityCheck}>{activity.state === 'failed' ? '!' : '✓'}</Text>
+      )}
+      <Text style={styles.completionActivityText}>{label}</Text>
+    </View>
   );
 }
 
@@ -385,10 +427,34 @@ export default function HomePage() {
         const payload = JSON.parse(dataLines.join('\n')) as ChatStreamPayload;
         if (event === 'start' && typeof payload.conversationId === 'string') {
           setConversationId(payload.conversationId);
-        } else if (event === 'delta' && typeof payload.text === 'string') {
-          updateAssistant(payload.text);
-        } else if (event === 'reset') {
-          setMessages((current) => current.filter((item) => item.id !== assistantMessageId));
+        } else if (
+          event === 'activity' &&
+          typeof payload.round === 'number' &&
+          Number.isSafeInteger(payload.round) &&
+          payload.round >= 0 &&
+          (payload.state === 'active' || payload.state === 'complete') &&
+          (payload.toolNames === undefined ||
+            (Array.isArray(payload.toolNames) && payload.toolNames.every((name) => typeof name === 'string')))
+        ) {
+          const activityId = `${turnId}-activity-${payload.round}`;
+          const toolNames = Array.isArray(payload.toolNames) ? payload.toolNames as string[] : [];
+          setMessages((current) => {
+            const existingIndex = current.findIndex((item) => item.id === activityId);
+            const activity: CompletionActivityItem = {
+              id: activityId,
+              role: 'activity',
+              round: payload.round as number,
+              state: payload.state as 'active' | 'complete',
+              toolNames,
+            };
+            if (existingIndex < 0) return [...current, activity];
+            const updated = [...current];
+            updated[existingIndex] = activity;
+            return updated;
+          });
+        } else if (event === 'delta' || event === 'reset') {
+          // Draft output stays represented by the persistent activity line until
+          // the server sends the final assistant message.
         } else if (
           event === 'assignment' &&
           typeof payload.assignmentId === 'string' &&
@@ -438,6 +504,9 @@ export default function HomePage() {
 
     } catch (sendError) {
       setMessages((current) => current.filter((item) => item.id !== assistantMessageId));
+      setMessages((current) => current.map((item) => item.role === 'activity' && item.state === 'active'
+        ? { ...item, state: 'failed' as const, toolNames: [] }
+        : item));
       setError(sendError instanceof Error ? sendError.message : 'cbud could not reply.');
     } finally {
       setIsSending(false);
@@ -478,7 +547,9 @@ export default function HomePage() {
                   ref={listRef}
                   renderItem={({ item }) => item.role === 'assignment'
                     ? <AssignmentCard assignment={item} />
-                    : <ChatBubble message={item} />}
+                    : item.role === 'activity'
+                      ? <CompletionActivity activity={item} />
+                      : <ChatBubble message={item} />}
                   scrollEnabled
                   showsVerticalScrollIndicator
                   style={styles.messages}
@@ -492,6 +563,7 @@ export default function HomePage() {
             ) : null}
             <View pointerEvents="none" style={styles.fixedBuddy}>
               <Buddy animation={isSending ? 'curious' : 'idle'} animationKey={messages.length} size={104} />
+              <Text style={styles.buddyWordmark}>cbud.</Text>
             </View>
           </View>
           <View style={styles.composer}>
@@ -515,7 +587,7 @@ export default function HomePage() {
               onPress={() => void handleSend()}
               style={[styles.iconButton, (!message.trim() || isSending) && styles.iconButtonDisabled]}
             >
-              {isSending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.arrow}>→</Text>}
+              {isSending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.arrow}>↑</Text>}
             </Pressable>
           </View>
         </View>
@@ -544,7 +616,10 @@ const styles = StyleSheet.create({
   bubble: { borderRadius: 18, maxWidth: '84%', paddingHorizontal: 15, paddingVertical: 11 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#fff8f5', borderBottomRightRadius: 5 },
   assistantBubble: { alignSelf: 'flex-start', backgroundColor: '#890620', borderBottomLeftRadius: 5 },
-  assignmentCard: { alignSelf: 'stretch', backgroundColor: '#fff8f5', borderColor: '#890620', borderRadius: 14, borderWidth: 1, marginHorizontal: 8, paddingHorizontal: 15, paddingVertical: 12 },
+  completionActivity: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', gap: 7, minHeight: 24, paddingHorizontal: 3 },
+  completionActivityCheck: { color: '#890620', fontSize: 14, fontWeight: '800', width: 14 },
+  completionActivityText: { color: '#79534c', fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
+  assignmentCard: { alignSelf: 'stretch', backgroundColor: '#fff8f5', borderColor: '#890620', borderRadius: 14, borderWidth: 1, paddingHorizontal: 15, paddingVertical: 12 },
   assignmentCardRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
   assignmentCardCopy: { flex: 1, gap: 4 },
   assignmentCardTitle: { color: '#2c0703', fontSize: 16, fontWeight: '700', lineHeight: 21 },
@@ -553,6 +628,7 @@ const styles = StyleSheet.create({
   assignmentLinkPressed: { opacity: 0.7 },
   assignmentLinkIcon: { color: '#fff', fontSize: 18, fontWeight: '800', lineHeight: 20 },
   fixedBuddy: { alignItems: 'center', bottom: 5, left: 0, position: 'absolute', right: 0, zIndex: 1 },
+  buddyWordmark: { bottom: 23, color: '#890620', fontSize: 28, fontWeight: '800', left: 2, letterSpacing: -1, position: 'absolute' },
   errorOverlay: { bottom: 8, color: '#890620', fontSize: 14, left: 20, position: 'absolute', right: 20, textAlign: 'center' },
   composer: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   iconButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 22, height: 44, justifyContent: 'center', width: 44 },

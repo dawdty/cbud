@@ -240,14 +240,25 @@ export default function PreferencesPage() {
       const body = (await response.json()) as {
         cleared?: unknown;
         canvasConnectionPreserved?: unknown;
+        jobsCleared?: unknown;
+        usageAndBillingPreserved?: unknown;
         error?: unknown;
       };
-      if (!response.ok || body.cleared !== true || body.canvasConnectionPreserved !== true) {
+      if (
+        !response.ok ||
+        body.cleared !== true ||
+        body.canvasConnectionPreserved !== true ||
+        body.jobsCleared !== true ||
+        body.usageAndBillingPreserved !== true
+      ) {
         throw new Error(typeof body.error === 'string' ? body.error : 'Could not clear account data.');
       }
 
       notifyAccountDataCleared();
-      setDataMessage({ kind: 'success', text: 'account data cleared. canvas is still connected.' });
+      setDataMessage({
+        kind: 'success',
+        text: 'app data cleared. canvas and usage records were preserved.',
+      });
     } catch (error) {
       setDataMessage({
         kind: 'error',
@@ -261,7 +272,7 @@ export default function PreferencesPage() {
   const handleClearAccountData = () => {
     Alert.alert(
       'clear all app data?',
-      'this permanently deletes your chats, detected assignments, cached context, and usage records. your canvas connection and access token stay saved.',
+      'this permanently deletes your chats, detected assignments, cached context, and scheduled jobs. your canvas connection, access token, and usage or billing records stay saved.',
       [
         { text: 'cancel', style: 'cancel' },
         { text: 'clear all', style: 'destructive', onPress: () => void clearAccountData() },
@@ -274,7 +285,7 @@ export default function PreferencesPage() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
         <View style={styles.page}>
           <View style={styles.header}>
-            <Text style={styles.wordmark}>cbud</Text>
+            <Text style={styles.wordmark}>cbud.</Text>
             <Text style={styles.heading}>settings</Text>
           </View>
 
@@ -409,11 +420,11 @@ export default function PreferencesPage() {
             <View style={styles.cardTitleGroup}>
               <Text style={styles.cardTitle}>account data</Text>
               <Text style={styles.cardSubtitle}>
-                delete all cbud data while keeping canvas connected
+                delete chats, assignments, and jobs while preserving canvas and usage records
               </Text>
             </View>
             <Pressable
-              accessibilityLabel="Clear all account data except Canvas authentication"
+              accessibilityLabel="Clear app data while preserving Canvas authentication and usage records"
               disabled={isClearingData}
               onPress={handleClearAccountData}
               style={[styles.dangerButton, isClearingData && styles.buttonDisabled]}

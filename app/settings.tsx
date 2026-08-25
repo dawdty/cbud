@@ -31,18 +31,31 @@ export default function MenuPage() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.content}>
-        <Text style={styles.wordmark}>cbud</Text>
+        <Text style={styles.wordmark}>cbud.</Text>
         <Text style={styles.heading}>menu</Text>
 
         <Pressable
           accessibilityLabel="Open to do's"
           accessibilityRole="button"
-          onPress={() => router.push('/todos')}
+          onPress={() => router.push({ pathname: '/todos', params: { refresh: 'true' } })}
           style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
         >
           <View style={styles.menuItemCopy}>
             <Text style={styles.menuItemTitle}>to do&apos;s</Text>
             <Text style={styles.menuItemSubtitle}>detected assignments and due dates</Text>
+          </View>
+          <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.arrow}>→</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="Open jobs"
+          accessibilityRole="button"
+          onPress={() => router.push('/jobs')}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+        >
+          <View style={styles.menuItemCopy}>
+            <Text style={styles.menuItemTitle}>jobs</Text>
+            <Text style={styles.menuItemSubtitle}>scheduled refreshes and reminders</Text>
           </View>
           <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.arrow}>→</Text>
         </Pressable>
