@@ -144,7 +144,7 @@ Images in Markdown are intentionally disabled. Draft `delta` and `reset` events 
 
 Users connect Canvas from Preferences by entering their school's HTTPS Canvas host and a Canvas personal access token. The UI can open that Canvas instance's `/profile/settings` page to help the user create a token. The token is sent to the backend and cleared from frontend state after a successful connection.
 
-The To Do's page loads detected assignments, sorts dated items chronologically, places undated items last, displays known submission status, and opens source assignments in Canvas. A refresh request asks the backend to update Canvas data first.
+The To-Dos page loads detected assignments, sorts dated items chronologically, places undated items last, displays known submission status, and opens source assignments in Canvas. A refresh request asks the backend to update Canvas data first.
 
 ### Jobs
 

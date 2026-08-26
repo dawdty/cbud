@@ -1,10 +1,11 @@
 import { useAuth, useSignIn, useSignUp } from '@clerk/expo';
 import { StatusBar } from 'expo-status-bar';
 import { Redirect, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 
-import { Buddy, type BuddyAnimation, type BuddyEyes, type BuddyGaze } from './components/buddy/index';
+import { Buddy, getResponsiveBuddySize, type BuddyAnimation, type BuddyEyes, type BuddyGaze } from './components/buddy/index';
+import { getResponsiveControlScale } from './lib/responsive-layout';
 
 type AuthMode = 'sign-in' | 'sign-up';
 type ActiveField = 'email' | 'password' | 'code';
@@ -15,6 +16,7 @@ export default function App() {
   const router = useRouter();
   const { signIn, fetchStatus: signInFetchStatus } = useSignIn();
   const { signUp, fetchStatus: signUpFetchStatus } = useSignUp();
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
   const [mode, setMode] = useState<AuthMode>('sign-in');
   const [emailAddress, setEmailAddress] = useState('');
   const [emailCursorPosition, setEmailCursorPosition] = useState(0);
@@ -30,6 +32,8 @@ export default function App() {
 
   const isSubmitting = signInFetchStatus === 'fetching' || signUpFetchStatus === 'fetching';
   const isVerifying = verificationMode !== undefined;
+  const buddySize = getResponsiveBuddySize(screenWidth, screenHeight);
+  const controlScale = getResponsiveControlScale(screenWidth, screenHeight);
 
   const showError = (message: string) => {
     setErrorMessage(message);
@@ -129,20 +133,28 @@ export default function App() {
     setActiveField(undefined);
   };
 
-  const updateEmailCursorPosition = (position: number) => {
+  const updateEmailCursorPosition = useCallback((position: number) => {
     setEmailCursorPosition(position);
     requestAnimationFrame(() => {
       emailInputRef.current?.measureInWindow((x, y, width, height) => {
-        const cursorX = Math.min(x + width - 16, x + 16 + position * 8);
+        const inputPadding = 16 * controlScale;
+        const estimatedCharacterWidth = 8 * controlScale;
+        const cursorX = Math.min(x + width - inputPadding, x + inputPadding + position * estimatedCharacterWidth);
         setEmailCursorTarget({ x: cursorX, y: y + height / 2 });
       });
     });
-  };
+  }, [controlScale]);
 
   const handleEmailChange = (value: string) => {
     setEmailAddress(value);
     setEmailTypingRevision((revision) => (value ? revision + 1 : 0));
   };
+
+  useEffect(() => {
+    if (activeField === 'email') {
+      updateEmailCursorPosition(emailCursorPosition);
+    }
+  }, [activeField, emailCursorPosition, screenHeight, screenWidth, updateEmailCursorPosition]);
 
   const buddyGaze = getBuddyGaze(isVerifying ? 'code' : activeField, emailAddress ? emailCursorTarget : undefined);
   const buddyEyes: BuddyEyes = activeField === 'password' || isVerifying ? 'closed' : 'open';
@@ -176,7 +188,7 @@ export default function App() {
                   : 'make an account to get started.'}
             </Text>
           </View>
-          <Buddy animation={buddyAnimation} animationKey={buddyAnimationKey} eyes={buddyEyes} gaze={buddyGaze} />
+          <Buddy animation={buddyAnimation} animationKey={buddyAnimationKey} eyes={buddyEyes} gaze={buddyGaze} size={buddySize} />
         </View>
 
         {isVerifying ? (
@@ -190,12 +202,20 @@ export default function App() {
               onBlur={() => setActiveField(undefined)}
               placeholder="verification code"
               placeholderTextColor="#b6465f"
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  borderRadius: 12 * controlScale,
+                  fontSize: 16 * controlScale,
+                  paddingHorizontal: 16 * controlScale,
+                  paddingVertical: 15 * controlScale,
+                },
+              ]}
               value={code}
             />
-            <PortalButton disabled={isSubmitting} label={isSubmitting ? 'verifying…' : verificationMode === 'sign-in' ? 'verify and sign in' : 'verify email'} onPress={handleVerification} />
+            <PortalButton controlScale={controlScale} disabled={isSubmitting} label={isSubmitting ? 'verifying…' : verificationMode === 'sign-in' ? 'verify and sign in' : 'verify email'} onPress={handleVerification} />
             <Pressable onPress={verificationMode === 'sign-in' ? returnToSignIn : () => setVerificationMode(undefined)}>
-              <Text style={styles.textButton}>back</Text>
+              <Text style={[styles.textButton, { fontSize: 15 * controlScale, paddingVertical: 8 * controlScale }]}>back</Text>
             </Pressable>
           </>
         ) : (
@@ -214,7 +234,15 @@ export default function App() {
               onBlur={() => setActiveField(undefined)}
               placeholder="email address"
               placeholderTextColor="#b6465f"
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  borderRadius: 12 * controlScale,
+                  fontSize: 16 * controlScale,
+                  paddingHorizontal: 16 * controlScale,
+                  paddingVertical: 15 * controlScale,
+                },
+              ]}
               value={emailAddress}
             />
             {mode === 'sign-up' ? (
@@ -227,13 +255,21 @@ export default function App() {
                 placeholder="password"
                 placeholderTextColor="#b6465f"
                 secureTextEntry
-                style={styles.input}
+                style={[
+                  styles.input,
+                  {
+                    borderRadius: 12 * controlScale,
+                    fontSize: 16 * controlScale,
+                    paddingHorizontal: 16 * controlScale,
+                    paddingVertical: 15 * controlScale,
+                  },
+                ]}
                 value={password}
               />
             ) : null}
-            <PortalButton disabled={isSubmitting} label={isSubmitting ? 'one moment…' : mode === 'sign-in' ? 'send sign-in code' : 'create account'} onPress={handleSubmit} />
+            <PortalButton controlScale={controlScale} disabled={isSubmitting} label={isSubmitting ? 'one moment…' : mode === 'sign-in' ? 'send sign-in code' : 'create account'} onPress={handleSubmit} />
             <Pressable onPress={() => switchMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}>
-              <Text style={styles.textButton}>{mode === 'sign-in' ? 'new here? create an account' : 'already have an account? sign in'}</Text>
+              <Text style={[styles.textButton, { fontSize: 15 * controlScale, paddingVertical: 8 * controlScale }]}>{mode === 'sign-in' ? 'new here? create an account' : 'already have an account? sign in'}</Text>
             </Pressable>
           </>
         )}
@@ -258,10 +294,18 @@ function getBuddyGaze(activeField: ActiveField | undefined, emailCursorTarget: {
   return undefined;
 }
 
-function PortalButton({ disabled, label, onPress }: { disabled?: boolean; label: string; onPress: () => void }) {
+function PortalButton({ controlScale, disabled, label, onPress }: { controlScale: number; disabled?: boolean; label: string; onPress: () => void }) {
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={[styles.button, disabled && styles.buttonDisabled]}>
-      <Text style={styles.buttonText}>{label}</Text>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={[
+        styles.button,
+        { borderRadius: 12 * controlScale, paddingVertical: 16 * controlScale },
+        disabled && styles.buttonDisabled,
+      ]}
+    >
+      <Text style={[styles.buttonText, { fontSize: 16 * controlScale }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -325,32 +369,23 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#fff8f6',
     borderColor: '#da9f93',
-    borderRadius: 12,
     borderWidth: 1,
     color: '#2c0703',
-    fontSize: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
   },
   button: {
     alignItems: 'center',
     backgroundColor: '#890620',
-    borderRadius: 12,
     marginTop: 4,
-    paddingVertical: 16,
   },
   buttonDisabled: {
     opacity: 0.55,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
     fontWeight: '700',
   },
   textButton: {
     color: '#890620',
-    fontSize: 15,
-    paddingVertical: 8,
     textAlign: 'center',
   },
   error: {

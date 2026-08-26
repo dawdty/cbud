@@ -1,7 +1,7 @@
 import { useAuth, useUser } from '@clerk/expo';
 import { fetch as expoFetch } from 'expo/fetch';
 import { Redirect, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -13,13 +13,15 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Markdown from 'react-native-markdown-renderer';
 
-import { Buddy } from '../components/buddy';
+import { BUDDY_BASE_SIZE, Buddy, getResponsiveBuddySize } from '../components/buddy';
 import { subscribeToAccountDataCleared } from '../lib/account-data-events';
+import { getResponsiveControlScale } from '../lib/responsive-layout';
 
 type ChatTextMessage = {
   id: string;
@@ -61,36 +63,36 @@ type ChatStreamPayload = {
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
 
-function markdownStyles(color: string, mutedColor: string, codeBackground: string) {
+function markdownStyles(color: string, mutedColor: string, codeBackground: string, fontScale: number) {
   return {
-    root: { color },
-    text: { color, fontSize: 16, lineHeight: 22 },
-    paragraph: { marginBottom: 7, marginTop: 0 },
-    headingContainer: { marginBottom: 7, marginTop: 4 },
+    root: { color, gap: 7 * fontScale },
+    text: { color, fontSize: 16 * fontScale, lineHeight: 22 * fontScale },
+    paragraph: { marginBottom: 0, marginTop: 0 },
+    headingContainer: { marginBottom: 0, marginTop: 0 },
     heading: { color, fontWeight: '700' as const },
-    heading1: { fontSize: 21, lineHeight: 27 },
+    heading1: { fontSize: 21 * fontScale, lineHeight: 27 * fontScale },
     heading1Container: { borderBottomWidth: 0, paddingBottom: 0 },
-    heading2: { fontSize: 19, lineHeight: 25 },
+    heading2: { fontSize: 19 * fontScale, lineHeight: 25 * fontScale },
     heading2Container: { borderBottomWidth: 0, paddingBottom: 0 },
-    heading3: { fontSize: 17, lineHeight: 23 },
-    heading4: { fontSize: 16, lineHeight: 22 },
-    heading5: { fontSize: 16, lineHeight: 22 },
-    heading6: { fontSize: 16, lineHeight: 22 },
-    list: { marginBottom: 7 },
+    heading3: { fontSize: 17 * fontScale, lineHeight: 23 * fontScale },
+    heading4: { fontSize: 16 * fontScale, lineHeight: 22 * fontScale },
+    heading5: { fontSize: 16 * fontScale, lineHeight: 22 * fontScale },
+    heading6: { fontSize: 16 * fontScale, lineHeight: 22 * fontScale },
+    list: { marginBottom: 0 },
     listUnorderedItem: { marginTop: 2 },
     listOrderedItem: { marginTop: 2 },
-    listUnorderedItemIcon: { color, lineHeight: 22, marginLeft: 4, marginRight: 8 },
-    listUnorderedItemText: { color, fontSize: 16, lineHeight: 22 },
-    listOrderedItemIcon: { color, lineHeight: 22, marginLeft: 4, marginRight: 8 },
-    listOrderedItemText: { color, fontSize: 16, lineHeight: 22 },
+    listUnorderedItemIcon: { color, lineHeight: 22 * fontScale, marginLeft: 4, marginRight: 8 },
+    listUnorderedItemText: { color, fontSize: 16 * fontScale, lineHeight: 22 * fontScale },
+    listOrderedItemIcon: { color, lineHeight: 22 * fontScale, marginLeft: 4, marginRight: 8 },
+    listOrderedItemText: { color, fontSize: 16 * fontScale, lineHeight: 22 * fontScale },
     link: { color: mutedColor, textDecorationLine: 'underline' as const },
     blocklink: { borderBottomColor: mutedColor },
-    blockquote: { borderLeftColor: mutedColor, marginBottom: 7, paddingHorizontal: 10 },
-    codeInline: { backgroundColor: codeBackground, color, fontSize: 14 },
-    codeBlock: { backgroundColor: codeBackground, color, fontSize: 14, lineHeight: 20, marginBottom: 7, padding: 10 },
+    blockquote: { borderLeftColor: mutedColor, marginBottom: 0, paddingHorizontal: 10 },
+    codeInline: { backgroundColor: codeBackground, color, fontSize: 14 * fontScale },
+    codeBlock: { backgroundColor: codeBackground, color, fontSize: 14 * fontScale, lineHeight: 20 * fontScale, marginBottom: 0, padding: 10 },
     pre: { marginBottom: 0 },
-    hr: { backgroundColor: mutedColor, height: 1, marginBottom: 9, marginTop: 9 },
-    table: { borderColor: mutedColor, marginBottom: 7 },
+    hr: { backgroundColor: mutedColor, height: 1, marginBottom: 0, marginTop: 0 },
+    table: { borderColor: mutedColor, marginBottom: 0 },
     tableHeader: { backgroundColor: codeBackground },
     tableHeaderCell: { borderColor: mutedColor, color },
     tableRow: { borderColor: mutedColor },
@@ -98,10 +100,7 @@ function markdownStyles(color: string, mutedColor: string, codeBackground: strin
   };
 }
 
-const userMarkdownStyles = markdownStyles('#2c0703', '#890620', '#f4e3de');
-const assistantMarkdownStyles = markdownStyles('#fff', '#ffd6de', 'rgba(255, 255, 255, 0.14)');
-
-function ChatBubble({ message }: { message: ChatTextMessage }) {
+function ChatBubble({ controlScale, message }: { controlScale: number; message: ChatTextMessage }) {
   const [entrance] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -115,6 +114,12 @@ function ChatBubble({ message }: { message: ChatTextMessage }) {
   }, [entrance]);
 
   const isUser = message.role === 'user';
+  const markdownStyle = useMemo(
+    () => isUser
+      ? markdownStyles('#2c0703', '#890620', '#f4e3de', controlScale)
+      : markdownStyles('#fff', '#ffd6de', 'rgba(255, 255, 255, 0.14)', controlScale),
+    [controlScale, isUser],
+  );
 
   const bubble = (
     <Animated.View
@@ -122,6 +127,8 @@ function ChatBubble({ message }: { message: ChatTextMessage }) {
         styles.bubble,
         isUser ? styles.userBubble : styles.assistantBubble,
         {
+          paddingHorizontal: 15 * controlScale,
+          paddingVertical: 11 * controlScale,
           opacity: entrance,
           transform: [
             { translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
@@ -133,7 +140,7 @@ function ChatBubble({ message }: { message: ChatTextMessage }) {
       <Markdown
         allowedImageHandlers={[]}
         defaultImageHandler={null}
-        style={isUser ? userMarkdownStyles : assistantMarkdownStyles}
+        style={markdownStyle}
       >
         {message.content}
       </Markdown>
@@ -155,7 +162,7 @@ function assignmentDueLabel(dueAt: string | null): string {
   }).format(date)}`;
 }
 
-function AssignmentCard({ assignment }: { assignment: AssignmentChatItem }) {
+function AssignmentCard({ assignment, controlScale }: { assignment: AssignmentChatItem; controlScale: number }) {
   const router = useRouter();
   const [entrance] = useState(() => new Animated.Value(0));
 
@@ -185,17 +192,25 @@ function AssignmentCard({ assignment }: { assignment: AssignmentChatItem }) {
     >
       <View style={styles.assignmentCardRow}>
         <View style={styles.assignmentCardCopy}>
-          <Text style={styles.assignmentCardTitle}>{assignment.title}</Text>
-          <Text style={styles.assignmentCardDue}>{assignmentDueLabel(assignment.dueAt)}</Text>
+          <Text style={[styles.assignmentCardTitle, { fontSize: 16 * controlScale, lineHeight: 21 * controlScale }]}>{assignment.title}</Text>
+          <Text style={[styles.assignmentCardDue, { fontSize: 12 * controlScale, lineHeight: 16 * controlScale }]}>{assignmentDueLabel(assignment.dueAt)}</Text>
         </View>
         <Pressable
           accessibilityLabel={`View ${assignment.title} in To Do's`}
           accessibilityRole="link"
           hitSlop={8}
           onPress={() => router.push({ pathname: '/todos', params: { refresh: 'true' } })}
-          style={({ pressed }) => [styles.assignmentLink, pressed && styles.assignmentLinkPressed]}
+          style={({ pressed }) => [
+            styles.assignmentLink,
+            {
+              borderRadius: 17 * controlScale,
+              height: 34 * controlScale,
+              width: 34 * controlScale,
+            },
+            pressed && styles.assignmentLinkPressed,
+          ]}
         >
-          <Text style={styles.assignmentLinkIcon}>→</Text>
+          <Text style={[styles.assignmentLinkIcon, { fontSize: 18 * controlScale, lineHeight: 20 * controlScale }]}>→</Text>
         </Pressable>
       </View>
     </Animated.View>
@@ -214,7 +229,7 @@ const toolActivityLabels: Record<string, string> = {
   cancel_job: 'cancelled a job',
 };
 
-function CompletionActivity({ activity }: { activity: CompletionActivityItem }) {
+function CompletionActivity({ activity, controlScale }: { activity: CompletionActivityItem; controlScale: number }) {
   const label = activity.state === 'failed'
     ? `stopped · step ${activity.round + 1}`
     : activity.state === 'active'
@@ -228,9 +243,9 @@ function CompletionActivity({ activity }: { activity: CompletionActivityItem }) 
       {activity.state === 'active' ? (
         <ActivityIndicator color="#890620" size="small" />
       ) : (
-        <Text style={styles.completionActivityCheck}>{activity.state === 'failed' ? '!' : '✓'}</Text>
+        <Text style={[styles.completionActivityCheck, { fontSize: 14 * controlScale, width: 14 * controlScale }]}>{activity.state === 'failed' ? '!' : '✓'}</Text>
       )}
-      <Text style={styles.completionActivityText}>{label}</Text>
+      <Text style={[styles.completionActivityText, { fontSize: 13 * controlScale, lineHeight: 18 * controlScale }]}>{label}</Text>
     </View>
   );
 }
@@ -239,6 +254,7 @@ export default function HomePage() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const router = useRouter();
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
   const listRef = useRef<FlatList<ChatItem>>(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatItem[]>([]);
@@ -246,6 +262,9 @@ export default function HomePage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCanvasConnected, setIsCanvasConnected] = useState<boolean | null>(null);
+  const buddySize = getResponsiveBuddySize(screenWidth, screenHeight);
+  const buddyScale = buddySize / BUDDY_BASE_SIZE;
+  const controlScale = getResponsiveControlScale(screenWidth, screenHeight);
 
   useEffect(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: messages.length > 1 }));
@@ -521,10 +540,18 @@ export default function HomePage() {
             <Pressable
               accessibilityLabel="Canvas integration not enabled. Open settings."
               onPress={() => router.push('/preferences')}
-              style={styles.canvasWarning}
+              style={[
+                styles.canvasWarning,
+                {
+                  borderRadius: 10 * controlScale,
+                  gap: 10 * controlScale,
+                  paddingHorizontal: 14 * controlScale,
+                  paddingVertical: 12 * controlScale,
+                },
+              ]}
             >
-              <Text style={styles.canvasWarningIcon}>!</Text>
-              <Text style={styles.canvasWarningText}>
+              <Text style={[styles.canvasWarningIcon, { fontSize: 17 * controlScale }]}>!</Text>
+              <Text style={[styles.canvasWarningText, { fontSize: 14 * controlScale }]}>
                 canvas integration not enabled. {"\n"}go to <Text style={styles.canvasWarningLink}>settings</Text>
               </Text>
             </Pressable>
@@ -546,10 +573,10 @@ export default function HomePage() {
                   onLayout={() => requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }))}
                   ref={listRef}
                   renderItem={({ item }) => item.role === 'assignment'
-                    ? <AssignmentCard assignment={item} />
+                    ? <AssignmentCard assignment={item} controlScale={controlScale} />
                     : item.role === 'activity'
-                      ? <CompletionActivity activity={item} />
-                      : <ChatBubble message={item} />}
+                      ? <CompletionActivity activity={item} controlScale={controlScale} />
+                      : <ChatBubble controlScale={controlScale} message={item} />}
                   scrollEnabled
                   showsVerticalScrollIndicator
                   style={styles.messages}
@@ -561,14 +588,21 @@ export default function HomePage() {
                 {error}
               </Text>
             ) : null}
-            <View pointerEvents="none" style={styles.fixedBuddy}>
-              <Buddy animation={isSending ? 'thinking' : 'idle'} animationKey={messages.length} size={104} />
-              <Text style={styles.buddyWordmark}>cbud.</Text>
-            </View>
           </View>
-          <View style={styles.composer}>
-            <Pressable accessibilityLabel="Open menu" onPress={() => router.push('/settings')} style={styles.iconButton}>
-              <Text style={styles.menu}>☰</Text>
+          <View style={[styles.composer, { gap: 10 * controlScale }]}>
+            <Pressable
+              accessibilityLabel="Open menu"
+              onPress={() => router.push('/settings')}
+              style={[
+                styles.iconButton,
+                {
+                  borderRadius: 22 * controlScale,
+                  height: 44 * controlScale,
+                  width: 44 * controlScale,
+                },
+              ]}
+            >
+              <Text style={[styles.menu, { fontSize: 22 * controlScale, lineHeight: 25 * controlScale }]}>☰</Text>
             </Pressable>
             <TextInput
               accessibilityLabel="Message"
@@ -578,17 +612,49 @@ export default function HomePage() {
               placeholder="Message cbud..."
               placeholderTextColor="#8f6e67"
               returnKeyType="send"
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  borderRadius: 22 * controlScale,
+                  fontSize: 16 * controlScale,
+                  height: 44 * controlScale,
+                  paddingHorizontal: 16 * controlScale,
+                },
+              ]}
               value={message}
             />
             <Pressable
               accessibilityLabel="Send message"
               disabled={!message.trim() || isSending}
               onPress={() => void handleSend()}
-              style={[styles.iconButton, (!message.trim() || isSending) && styles.iconButtonDisabled]}
+              style={[
+                styles.iconButton,
+                {
+                  borderRadius: 22 * controlScale,
+                  height: 44 * controlScale,
+                  width: 44 * controlScale,
+                },
+                (!message.trim() || isSending) && styles.iconButtonDisabled,
+              ]}
             >
-              {isSending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.arrow}>↑</Text>}
+              {isSending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={[styles.arrow, { fontSize: 24 * controlScale, lineHeight: 26 * controlScale }]}>↑</Text>}
             </Pressable>
+          </View>
+          <View pointerEvents="none" style={styles.buddySection}>
+            <Buddy animation={isSending ? 'thinking' : 'idle'} animationKey={messages.length} size={buddySize} />
+            <Text
+              style={[
+                styles.buddyWordmark,
+                {
+                  bottom: 23 * buddyScale,
+                  fontSize: 28 * buddyScale,
+                  left: 2 * buddyScale,
+                  letterSpacing: -buddyScale,
+                },
+              ]}
+            >
+              cbud.
+            </Text>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -602,38 +668,38 @@ const styles = StyleSheet.create({
   loading: { alignItems: 'center', backgroundColor: '#ebd4cb', flex: 1, justifyContent: 'center' },
   keyboardView: { flex: 1 },
   portal: { flex: 1, gap: 12, padding: 20 },
-  canvasWarning: { alignItems: 'center', backgroundColor: '#890620', borderColor: '#890620', borderLeftWidth: 4, borderRadius: 10, borderWidth: 1, flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
-  canvasWarningIcon: { color: '#fff', fontSize: 17, fontWeight: '800' },
-  canvasWarningText: { color: '#fff', flex: 1, fontSize: 14, fontWeight: '700' },
+  canvasWarning: { alignItems: 'center', backgroundColor: '#890620', borderColor: '#890620', borderLeftWidth: 4, borderWidth: 1, flexDirection: 'row' },
+  canvasWarningIcon: { color: '#fff', fontWeight: '800' },
+  canvasWarningText: { color: '#fff', flex: 1, fontWeight: '700' },
   canvasWarningLink: { textDecorationLine: 'underline' },
   chatArea: { flex: 1, position: 'relative' },
-  chatWindow: { bottom: 150, left: 0, position: 'absolute', right: 0, top: 0 },
+  chatWindow: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
   introCopy: { flex: 1, justifyContent: 'center' },
   heading: { color: '#2c0703', fontSize: 26, fontWeight: '700', letterSpacing: -0.5 },
   copy: { color: '#890620', fontSize: 16, lineHeight: 23, marginBottom: 10 },
   messages: { flex: 1 },
   messagesContent: { gap: 10, paddingBottom: 18, paddingTop: 8 },
-  bubble: { borderRadius: 18, maxWidth: '84%', paddingHorizontal: 15, paddingVertical: 11 },
+  bubble: { borderRadius: 18, maxWidth: '84%' },
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#fff8f5', borderBottomRightRadius: 5 },
   assistantBubble: { alignSelf: 'flex-start', backgroundColor: '#890620', borderBottomLeftRadius: 5 },
   completionActivity: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', gap: 7, minHeight: 24, paddingHorizontal: 3 },
-  completionActivityCheck: { color: '#890620', fontSize: 14, fontWeight: '800', width: 14 },
-  completionActivityText: { color: '#79534c', fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
+  completionActivityCheck: { color: '#890620', fontWeight: '800' },
+  completionActivityText: { color: '#79534c', fontStyle: 'italic' },
   assignmentCard: { alignSelf: 'stretch', backgroundColor: '#fff8f5', borderColor: '#890620', borderRadius: 14, borderWidth: 1, paddingHorizontal: 15, paddingVertical: 12 },
   assignmentCardRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
   assignmentCardCopy: { flex: 1, gap: 4 },
-  assignmentCardTitle: { color: '#2c0703', fontSize: 16, fontWeight: '700', lineHeight: 21 },
-  assignmentCardDue: { color: '#79534c', fontSize: 12, lineHeight: 16 },
-  assignmentLink: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 17, height: 34, justifyContent: 'center', width: 34 },
+  assignmentCardTitle: { color: '#2c0703', fontWeight: '700' },
+  assignmentCardDue: { color: '#79534c' },
+  assignmentLink: { alignItems: 'center', backgroundColor: '#890620', justifyContent: 'center' },
   assignmentLinkPressed: { opacity: 0.7 },
-  assignmentLinkIcon: { color: '#fff', fontSize: 18, fontWeight: '800', lineHeight: 20 },
-  fixedBuddy: { alignItems: 'center', bottom: 5, left: 0, position: 'absolute', right: 0, zIndex: 1 },
-  buddyWordmark: { bottom: 23, color: '#890620', fontSize: 28, fontWeight: '800', left: 2, letterSpacing: -1, position: 'absolute' },
+  assignmentLinkIcon: { color: '#fff', fontWeight: '800' },
+  buddySection: { alignItems: 'center', transform: [{ translateY: 24 }] },
+  buddyWordmark: { color: '#890620', fontWeight: '800', position: 'absolute' },
   errorOverlay: { bottom: 8, color: '#890620', fontSize: 14, left: 20, position: 'absolute', right: 20, textAlign: 'center' },
-  composer: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  iconButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 22, height: 44, justifyContent: 'center', width: 44 },
+  composer: { alignItems: 'center', flexDirection: 'row' },
+  iconButton: { alignItems: 'center', backgroundColor: '#890620', justifyContent: 'center' },
   iconButtonDisabled: { backgroundColor: '#bd8d87' },
-  menu: { color: '#fff', fontSize: 22, lineHeight: 25 },
-  input: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderRadius: 22, borderWidth: 1, color: '#2c0703', flex: 1, fontSize: 16, height: 44, paddingHorizontal: 16 },
-  arrow: { color: '#fff', fontSize: 24, lineHeight: 26 },
+  menu: { color: '#fff' },
+  input: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderWidth: 1, color: '#2c0703', flex: 1 },
+  arrow: { color: '#fff' },
 });

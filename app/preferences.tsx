@@ -14,10 +14,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
 import { notifyAccountDataCleared } from '../lib/account-data-events';
+import { getResponsiveControlScale } from '../lib/responsive-layout';
 
 type CanvasConnection = {
   baseUrl: string;
@@ -44,6 +46,8 @@ function canvasProfileUrl(canvasUrl: string): string {
 export default function PreferencesPage() {
   const { getToken, isLoaded, isSignedIn, signOut } = useAuth();
   const router = useRouter();
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+  const controlScale = getResponsiveControlScale(screenWidth, screenHeight);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus | null>(null);
   const [showCanvasForm, setShowCanvasForm] = useState(false);
   const [canvasUrl, setCanvasUrl] = useState('');
@@ -318,9 +322,16 @@ export default function PreferencesPage() {
                   accessibilityLabel="Disconnect Canvas"
                   disabled={isSavingCanvas}
                   onPress={() => void handleDisconnectCanvas()}
-                  style={styles.secondaryButton}
+                  style={[
+                    styles.secondaryButton,
+                    {
+                      borderRadius: 12 * controlScale,
+                      minHeight: 46 * controlScale,
+                      paddingHorizontal: 16 * controlScale,
+                    },
+                  ]}
                 >
-                  <Text style={styles.secondaryButtonText}>disconnect canvas</Text>
+                  <Text style={[styles.secondaryButtonText, { fontSize: 15 * controlScale }]}>disconnect canvas</Text>
                 </Pressable>
               </>
             ) : showCanvasForm ? (
@@ -332,14 +343,22 @@ export default function PreferencesPage() {
                   onChangeText={setCanvasUrl}
                   placeholder="canvas.yourschool.edu"
                   placeholderTextColor="#8f6e67"
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    {
+                      borderRadius: 10 * controlScale,
+                      fontSize: 16 * controlScale,
+                      height: 48 * controlScale,
+                      paddingHorizontal: 14 * controlScale,
+                    },
+                  ]}
                   value={canvasUrl}
                 />
                 <Text style={styles.helpText}>
                   sign in to canvas, then create a new access token on your settings page
                 </Text>
                 <Pressable accessibilityLabel="Sign in and open Canvas settings" onPress={() => void handleOpenCanvas()}>
-                  <Text style={styles.linkText}>sign in &amp; open canvas settings ↗</Text>
+                  <Text style={[styles.linkText, { fontSize: 14 * controlScale, paddingVertical: 4 * controlScale }]}>sign in &amp; open canvas settings ↗</Text>
                 </Pressable>
                 <TextInput
                   autoCapitalize="none"
@@ -348,7 +367,15 @@ export default function PreferencesPage() {
                   placeholder="canvas access token"
                   placeholderTextColor="#8f6e67"
                   secureTextEntry
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    {
+                      borderRadius: 10 * controlScale,
+                      fontSize: 16 * controlScale,
+                      height: 48 * controlScale,
+                      paddingHorizontal: 14 * controlScale,
+                    },
+                  ]}
                   value={canvasAccessToken}
                 />
                 <Pressable
@@ -357,13 +384,18 @@ export default function PreferencesPage() {
                   onPress={() => void handleConnectCanvas()}
                   style={[
                     styles.primaryButton,
+                    {
+                      borderRadius: 12 * controlScale,
+                      minHeight: 48 * controlScale,
+                      paddingHorizontal: 16 * controlScale,
+                    },
                     (isSavingCanvas || !canvasUrl.trim() || !canvasAccessToken.trim()) && styles.buttonDisabled,
                   ]}
                 >
                   {isSavingCanvas ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.primaryButtonText}>connect</Text>
+                    <Text style={[styles.primaryButtonText, { fontSize: 16 * controlScale }]}>connect</Text>
                   )}
                 </Pressable>
               </View>
@@ -374,9 +406,16 @@ export default function PreferencesPage() {
                   setCanvasError(null);
                   setShowCanvasForm(true);
                 }}
-                style={styles.primaryButton}
+                style={[
+                  styles.primaryButton,
+                  {
+                    borderRadius: 12 * controlScale,
+                    minHeight: 48 * controlScale,
+                    paddingHorizontal: 16 * controlScale,
+                  },
+                ]}
               >
-                <Text style={styles.primaryButtonText}>enable canvas</Text>
+                <Text style={[styles.primaryButtonText, { fontSize: 16 * controlScale }]}>enable canvas</Text>
               </Pressable>
             )}
 
@@ -398,12 +437,20 @@ export default function PreferencesPage() {
               accessibilityLabel="Clear memory"
               disabled={isClearingMemory}
               onPress={handleClearMemory}
-              style={[styles.dangerButton, isClearingMemory && styles.buttonDisabled]}
+              style={[
+                styles.dangerButton,
+                {
+                  borderRadius: 12 * controlScale,
+                  minHeight: 48 * controlScale,
+                  paddingHorizontal: 16 * controlScale,
+                },
+                isClearingMemory && styles.buttonDisabled,
+              ]}
             >
               {isClearingMemory ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.primaryButtonText}>clear memory</Text>
+                <Text style={[styles.primaryButtonText, { fontSize: 16 * controlScale }]}>clear memory</Text>
               )}
             </Pressable>
             {memoryMessage ? (
@@ -427,12 +474,20 @@ export default function PreferencesPage() {
               accessibilityLabel="Clear app data while preserving Canvas authentication and usage records"
               disabled={isClearingData}
               onPress={handleClearAccountData}
-              style={[styles.dangerButton, isClearingData && styles.buttonDisabled]}
+              style={[
+                styles.dangerButton,
+                {
+                  borderRadius: 12 * controlScale,
+                  minHeight: 48 * controlScale,
+                  paddingHorizontal: 16 * controlScale,
+                },
+                isClearingData && styles.buttonDisabled,
+              ]}
             >
               {isClearingData ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.primaryButtonText}>clear all data</Text>
+                <Text style={[styles.primaryButtonText, { fontSize: 16 * controlScale }]}>clear all data</Text>
               )}
             </Pressable>
             {dataMessage ? (
@@ -448,12 +503,16 @@ export default function PreferencesPage() {
             </ScrollView>
           </View>
 
-          <View style={styles.footerActions}>
-            <Pressable accessibilityLabel="Sign out" onPress={handleSignOut} style={styles.signOutButton}>
-              <Text style={styles.signOutText}>sign out</Text>
+          <View style={[styles.footerActions, { gap: 8 * controlScale }]}>
+            <Pressable accessibilityLabel="Sign out" onPress={handleSignOut} style={[styles.signOutButton, { paddingVertical: 12 * controlScale }]}>
+              <Text style={[styles.signOutText, { fontSize: 16 * controlScale }]}>sign out</Text>
             </Pressable>
-            <Pressable accessibilityLabel="Go back" onPress={handleBack} style={styles.backButton}>
-              <Text style={styles.backText}>back</Text>
+            <Pressable
+              accessibilityLabel="Go back"
+              onPress={handleBack}
+              style={[styles.backButton, { borderRadius: 12 * controlScale, paddingVertical: 16 * controlScale }]}
+            >
+              <Text style={[styles.backText, { fontSize: 16 * controlScale }]}>back</Text>
             </Pressable>
           </View>
         </View>
@@ -491,7 +550,7 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: '#bd8d87' },
   errorText: { color: '#890620', fontSize: 13, lineHeight: 18 },
   successText: { color: '#386641', fontSize: 13, lineHeight: 18 },
-  footerActions: { gap: 8 },
+  footerActions: {},
   signOutButton: { alignItems: 'center', paddingVertical: 12 },
   signOutText: { color: '#890620', fontSize: 16, fontWeight: '700' },
   backButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 12, paddingVertical: 16 },
