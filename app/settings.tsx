@@ -61,6 +61,28 @@ export default function MenuPage() {
         </Pressable>
 
         <Pressable
+          accessibilityLabel="Open courses"
+          accessibilityRole="button"
+          onPress={() => router.push('/courses')}
+          style={({ pressed }) => [
+            styles.menuItem,
+            {
+              borderRadius: 16 * controlScale,
+              gap: 12 * controlScale,
+              minHeight: 82 * controlScale,
+              padding: 18 * controlScale,
+            },
+            pressed && styles.menuItemPressed,
+          ]}
+        >
+          <View style={styles.menuItemCopy}>
+            <Text style={[styles.menuItemTitle, { fontSize: 19 * controlScale }]}>courses</Text>
+            <Text style={[styles.menuItemSubtitle, { fontSize: 14 * controlScale }]}>your current canvas courses</Text>
+          </View>
+          <Text accessibilityElementsHidden importantForAccessibility="no" style={[styles.arrow, { fontSize: 25 * controlScale, lineHeight: 28 * controlScale }]}>→</Text>
+        </Pressable>
+
+        <Pressable
           accessibilityLabel="Open jobs"
           accessibilityRole="button"
           onPress={() => router.push('/jobs')}
@@ -87,21 +109,12 @@ export default function MenuPage() {
           accessibilityRole="button"
           onPress={() => router.push('/preferences')}
           style={({ pressed }) => [
-            styles.menuItem,
-            {
-              borderRadius: 16 * controlScale,
-              gap: 12 * controlScale,
-              minHeight: 82 * controlScale,
-              padding: 18 * controlScale,
-            },
+            styles.settingsButton,
+            { paddingVertical: 12 * controlScale },
             pressed && styles.menuItemPressed,
           ]}
         >
-          <View style={styles.menuItemCopy}>
-            <Text style={[styles.menuItemTitle, { fontSize: 19 * controlScale }]}>settings</Text>
-            <Text style={[styles.menuItemSubtitle, { fontSize: 14 * controlScale }]}>canvas, memory, and account</Text>
-          </View>
-          <Text accessibilityElementsHidden importantForAccessibility="no" style={[styles.arrow, { fontSize: 25 * controlScale, lineHeight: 28 * controlScale }]}>→</Text>
+          <Text style={[styles.settingsText, { fontSize: 16 * controlScale }]}>settings</Text>
         </Pressable>
 
         <Pressable
@@ -129,6 +142,8 @@ const styles = StyleSheet.create({
   menuItemTitle: { color: '#2c0703', fontWeight: '700' },
   menuItemSubtitle: { color: '#79534c' },
   arrow: { color: '#890620' },
+  settingsButton: { alignItems: 'center' },
+  settingsText: { color: '#890620', fontWeight: '700' },
   backButton: { alignItems: 'center', backgroundColor: '#890620', marginTop: 'auto' },
   backText: { color: '#fff', fontWeight: '700' },
 });

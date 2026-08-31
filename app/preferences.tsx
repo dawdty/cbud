@@ -293,6 +293,24 @@ export default function PreferencesPage() {
             <Text style={styles.heading}>settings</Text>
           </View>
 
+          <Pressable
+            accessibilityLabel="Open plans"
+            accessibilityRole="button"
+            onPress={() => router.push('/plans')}
+            style={({ pressed }) => [
+              styles.plansButton,
+              {
+                borderRadius: 12 * controlScale,
+                minHeight: 48 * controlScale,
+                paddingHorizontal: 16 * controlScale,
+              },
+              pressed && styles.plansButtonPressed,
+            ]}
+          >
+            <Text style={[styles.plansButtonText, { fontSize: 16 * controlScale }]}>view plans</Text>
+            <Text accessibilityElementsHidden style={[styles.plansButtonArrow, { fontSize: 19 * controlScale }]}>→</Text>
+          </Pressable>
+
           <View style={styles.settingsBox}>
             <ScrollView
               contentContainerStyle={styles.sections}
@@ -530,6 +548,10 @@ const styles = StyleSheet.create({
   header: { gap: 4 },
   wordmark: { color: '#890620', fontSize: 38, fontWeight: '800', letterSpacing: -1.5, marginBottom: 4 },
   heading: { color: '#2c0703', fontSize: 26, fontWeight: '700', letterSpacing: -0.5 },
+  plansButton: { alignItems: 'center', backgroundColor: '#fff8f5', borderColor: '#890620', borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between' },
+  plansButtonPressed: { opacity: 0.72 },
+  plansButtonText: { color: '#890620', fontWeight: '700' },
+  plansButtonArrow: { color: '#890620', fontWeight: '700' },
   settingsBox: { backgroundColor: '#e4c3b8', borderColor: '#c3978e', borderRadius: 18, borderWidth: 1, flex: 1, overflow: 'hidden' },
   sections: { gap: 12, padding: 12 },
   card: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderRadius: 16, borderWidth: 1, gap: 14, padding: 18 },
@@ -546,7 +568,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   secondaryButton: { alignItems: 'center', borderColor: '#890620', borderRadius: 12, borderWidth: 1, minHeight: 46, justifyContent: 'center', paddingHorizontal: 16 },
   secondaryButtonText: { color: '#890620', fontSize: 15, fontWeight: '700' },
-  dangerButton: { alignItems: 'center', backgroundColor: '#b00020', borderRadius: 12, minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
+  dangerButton: { alignItems: 'center', backgroundColor: '#890620', borderRadius: 12, minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
   buttonDisabled: { backgroundColor: '#bd8d87' },
   errorText: { color: '#890620', fontSize: 13, lineHeight: 18 },
   successText: { color: '#386641', fontSize: 13, lineHeight: 18 },

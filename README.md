@@ -66,6 +66,7 @@ The repository does not include backend services, a database, Clerk configuratio
    ```dotenv
    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_replace_with_your_clerk_publishable_key
    EXPO_PUBLIC_API_URL=http://localhost:3000
+   EXPO_PUBLIC_REVENUECAT_API_KEY=test_ramaZnUwNPcdYhYbSxNTJtVOJsD
    ```
 
 4. Start the Expo development server:
@@ -78,6 +79,21 @@ Use the terminal shortcuts from Expo to open the desired target, or use one of t
 
 > [!IMPORTANT]
 > Variables prefixed with `EXPO_PUBLIC_` are embedded in the client bundle. The Clerk publishable key and API base URL are intended to be public; never place Clerk secret keys, Canvas access tokens, or other secrets in these variables.
+
+### In-app purchase plans
+
+Plans in **Settings** are loaded from the current RevenueCat offering, so every package you configure there appears in the app with its store-localized title, description, and price. The app configures RevenueCat once for the signed-in Clerk user and uses the `class_bud` entitlement as its sole access check.
+
+#### RevenueCat setup
+
+1. In App Store Connect and Google Play Console, create auto-renewing subscriptions with the product identifiers `yearly` and `monthly`. Configure price, duration, localization, and subscription groups/base plans as required by each store.
+2. Add the iOS and Android apps to the same RevenueCat project and import the two store products.
+3. In RevenueCat, create the `class_bud` entitlement and attach both `yearly` and `monthly` products to it.
+4. Create an offering (usually `default`), add packages for the monthly and annual products, and make it the current offering. RevenueCat package identifiers may be `$rc_monthly` and `$rc_annual`; the underlying product identifiers remain `monthly` and `yearly`.
+
+`lib/subscriptions.tsx` owns SDK initialization, Clerk-to-RevenueCat identity, live customer-info updates, entitlement checks, purchases, and restores. Plans purchases each package directly with `Purchases.purchasePackage()` and grants access only when the `class_bud` entitlement is active. Use `useSubscriptions().isClassBudActive` to gate any paid feature instead of inspecting product IDs. `customerInfo` is also available when expiration dates or other subscription details are needed.
+
+Native purchases require an Expo development or production build; they cannot complete in Expo Go. Enable the In-App Purchase capability for the iOS target before submitting a build. The Android billing permission is configured in `app.json`.
 
 ### Local API URLs on devices and emulators
 
