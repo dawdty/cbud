@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 
 import { notifyAccountDataCleared } from '../lib/account-data-events';
+import { clearJobNotifications } from '../lib/job-notifications';
 import { getResponsiveControlScale } from '../lib/responsive-layout';
 
 type CanvasConnection = {
@@ -125,6 +126,7 @@ export default function PreferencesPage() {
   }
 
   const handleSignOut = async () => {
+    await clearJobNotifications().catch(() => undefined);
     await signOut();
     router.replace('/');
   };
@@ -259,6 +261,7 @@ export default function PreferencesPage() {
       }
 
       notifyAccountDataCleared();
+      await clearJobNotifications().catch(() => undefined);
       setDataMessage({
         kind: 'success',
         text: 'app data cleared. canvas and usage records were preserved.',

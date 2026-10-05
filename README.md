@@ -14,7 +14,7 @@ This repository contains the frontend only. It expects a separate authenticated 
 - Restored chat history for returning users
 - Canvas LMS connection using a school Canvas URL and personal access token
 - Detected assignment list with due dates, submission status, and Canvas links
-- Scheduled assignment-refresh and reminder job list
+- Scheduled agent tasks and reminders with cancellation, chat results, and local notifications
 - Memory and account-data deletion controls
 - A reusable, accessible animated mascot with gaze and expression presets
 - File-based navigation with authentication guards
@@ -27,6 +27,7 @@ This repository contains the frontend only. It expects a separate authenticated 
 | Navigation | Expo Router 57 |
 | Authentication | Clerk Expo SDK |
 | Networking | Standard `fetch` plus `expo/fetch` for streamed chat |
+| Notifications | `expo-notifications` local schedules reconciled with server reminder jobs |
 | Rendering | React Native and `react-native-markdown-renderer` |
 | Animation | React Native `Animated` API |
 | Session storage | Clerk's Expo secure token cache / `expo-secure-store` |
@@ -61,12 +62,13 @@ The repository does not include backend services, a database, Clerk configuratio
    cp .env.example .env
    ```
 
-3. Set both public environment variables:
+3. Set the public client variables:
 
    ```dotenv
    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_replace_with_your_clerk_publishable_key
    EXPO_PUBLIC_API_URL=http://localhost:3000
-   EXPO_PUBLIC_REVENUECAT_API_KEY=test_ramaZnUwNPcdYhYbSxNTJtVOJsD
+   EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=appl_replace_with_your_ios_revenuecat_public_key
+   EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=goog_replace_with_your_android_revenuecat_public_key
    ```
 
 4. Start the Expo development server:
@@ -78,22 +80,35 @@ The repository does not include backend services, a database, Clerk configuratio
 Use the terminal shortcuts from Expo to open the desired target, or use one of the platform scripts below.
 
 > [!IMPORTANT]
-> Variables prefixed with `EXPO_PUBLIC_` are embedded in the client bundle. The Clerk publishable key and API base URL are intended to be public; never place Clerk secret keys, Canvas access tokens, or other secrets in these variables.
+> Variables prefixed with `EXPO_PUBLIC_` are embedded in the client bundle. The Clerk publishable key,
+> API base URL, and platform-specific RevenueCat SDK keys are public. Never place a RevenueCat secret
+> key, Clerk secret key, Canvas access token, or other secret in these variables.
 
 ### In-app purchase plans
 
-Plans in **Settings** are loaded from the current RevenueCat offering, so every package you configure there appears in the app with its store-localized title, description, and price. The app configures RevenueCat once for the signed-in Clerk user and uses the `class_bud` entitlement as its sole access check.
+The Plans screen shows only the RevenueCat package backed by the `monthly` product identifier. It displays
+the store-localized price and the backend-authorized UTC-month provider-spend allowance: `$0.25` free and
+`$2.00` for `class_bud`. These are usage allowances, not prepaid account credit. The backend, not the SDK
+entitlement cached in the app, authorizes chat allowance and job creation.
 
-#### RevenueCat setup
+#### RevenueCat and store setup
 
-1. In App Store Connect and Google Play Console, create auto-renewing subscriptions with the product identifiers `yearly` and `monthly`. Configure price, duration, localization, and subscription groups/base plans as required by each store.
-2. Add the iOS and Android apps to the same RevenueCat project and import the two store products.
-3. In RevenueCat, create the `class_bud` entitlement and attach both `yearly` and `monthly` products to it.
-4. Create an offering (usually `default`), add packages for the monthly and annual products, and make it the current offering. RevenueCat package identifiers may be `$rc_monthly` and `$rc_annual`; the underlying product identifiers remain `monthly` and `yearly`.
+1. In App Store Connect and Google Play Console, configure the `monthly` auto-renewable subscription for
+   `com.dawdty.cbud` at US `$4.99/month`; localized storefront prices may differ.
+2. Add the iOS and Android apps to the same RevenueCat project, import `monthly`, and attach it to the
+   `class_bud` entitlement. Existing annual subscribers, if any, retain entitlement access until expiry.
+3. Attach only the monthly package to the current RevenueCat offering. Do not remove a live annual product
+   without first inspecting its active subscribers.
+4. Put the iOS and Android public SDK keys above in the respective Expo build environments. Put the
+   project-wide RevenueCat secret key only in the backend environment as `REVENUECAT_SECRET_API_KEY`.
 
-`lib/subscriptions.tsx` owns SDK initialization, Clerk-to-RevenueCat identity, live customer-info updates, entitlement checks, purchases, and restores. Plans purchases each package directly with `Purchases.purchasePackage()` and grants access only when the `class_bud` entitlement is active. Use `useSubscriptions().isClassBudActive` to gate any paid feature instead of inspecting product IDs. `customerInfo` is also available when expiration dates or other subscription details are needed.
+`lib/subscriptions.tsx` initializes RevenueCat for the signed-in Clerk user and treats its entitlement as
+local purchase presentation only. Purchases and restores use the SDK; a temporary backend propagation delay
+is shown as access pending rather than as paid authorization.
 
-Native purchases require an Expo development or production build; they cannot complete in Expo Go. Enable the In-App Purchase capability for the iOS target before submitting a build. The Android billing permission is configured in `app.json`.
+Native purchases require a development, preview, or production build; they cannot complete in Expo Go.
+Enable the In-App Purchase capability for the iOS target before submitting a build. The Android billing
+permission is configured in `app.json`.
 
 ### Local API URLs on devices and emulators
 
@@ -164,7 +179,9 @@ The To-Dos page loads detected assignments, sorts dated items chronologically, p
 
 ### Jobs
 
-Jobs are created through the conversational assistant's backend tools. The frontend currently lists and refreshes `refresh_assignments` and `remind_user` jobs and displays their scheduled time, status, and optional message. Native background execution and notifications are not implemented in this client yet.
+Jobs are created through the conversational assistant's backend tools. The Jobs page lists and refreshes `agent_query`, legacy `refresh_assignments`, and `remind_user` jobs, sorts active work first, and lets users cancel scheduled jobs. Running jobs show a pair of turning gears; the gears remain still when the device's reduced-motion setting is enabled. Agent-job answers are appended to the conversation that scheduled them; Home reloads history whenever it regains focus. After the user enables notification permission, future reminder jobs are mirrored to local device notifications and reconciled whenever the list refreshes. Tapping a cbud reminder opens the Jobs page.
+
+Job execution remains server-owned so schedules are honored when the app is suspended or terminated. The client does not use Expo BackgroundTask for exact job execution because mobile operating systems run those tasks opportunistically rather than at a guaranteed `runAt` time.
 
 ### Data controls
 
@@ -185,12 +202,17 @@ Every request below requires a Clerk session token in `Authorization: Bearer <to
 | `PUT` | `/integrations/canvas` | Accepts `{ canvasUrl, accessToken }`; returns the Canvas status shape |
 | `DELETE` | `/integrations/canvas` | Disconnects the user's Canvas account |
 | `GET` | `/chat/history` | `{ conversationId, messages }`, where retained messages have string `id`, `user` or `assistant` role, and string `content` |
-| `POST` | `/chat/stream` | Accepts `{ message, conversationId? }`; returns `text/event-stream` |
+| `POST` | `/chat/stream` | Accepts `{ message, conversationId?, deviceTime }`; returns `text/event-stream` |
 | `GET` | `/assignments` | `{ assignments: DetectedAssignment[] }` |
 | `GET` | `/assignments?refresh=true` | Refreshes upstream data and returns `{ assignments: DetectedAssignment[] }` |
 | `GET` | `/jobs` | `{ jobs: AppJob[] }` |
+| `DELETE` | `/jobs/:jobId` | Cancels a scheduled job; a successful response may have an empty body |
 | `DELETE` | `/memory` | `{ cleared: true }` |
 | `DELETE` | `/account-data` | `{ cleared: true, canvasConnectionPreserved: true, jobsCleared: true, usageAndBillingPreserved: true }` |
+
+For chat requests, `deviceTime` has the shape
+`{ now: string, timeZone: string | null, utcOffsetMinutes: number }`. It is generated immediately
+before each request so relative dates and reminder times use the device's current local clock.
 
 Error responses may include `{ error: string }`; otherwise the client supplies a generic message.
 
@@ -224,7 +246,7 @@ type DetectedAssignment = {
 
 type AppJob = {
   id: string;
-  type: 'refresh_assignments' | 'remind_user';
+  type: 'agent_query' | 'refresh_assignments' | 'remind_user';
   status: 'scheduled' | 'running' | 'completed' | 'failed';
   runAt: string;
   message: string | null;
@@ -253,7 +275,10 @@ Date strings are parsed by JavaScript's `Date` and displayed in the device local
 │   ├── useBuddyAnimation.ts
 │   └── index.ts
 ├── lib/
-│   └── account-data-events.ts   # In-memory deletion notification channel
+│   ├── account-data-events.ts   # In-memory deletion notification channel
+│   ├── job-notifications.ts     # Device reminder permission and reconciliation
+│   ├── responsive-layout.ts     # Shared viewport scaling helpers
+│   └── subscriptions.tsx        # RevenueCat subscription state
 ├── assets/                      # App icons and web favicon
 ├── App.tsx                      # Authentication portal
 ├── app.json                     # Expo app and native identifier configuration

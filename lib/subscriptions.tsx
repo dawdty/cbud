@@ -5,7 +5,10 @@ import Purchases, { CustomerInfo, PurchasesOffering, PurchasesPackage } from 're
 
 export const CLASS_BUD_ENTITLEMENT = 'class_bud';
 
-const revenueCatApiKey = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+const revenueCatApiKey = Platform.select({
+  ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY,
+  android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY,
+});
 
 type SubscriptionContextValue = {
   customerInfo: CustomerInfo | null;
@@ -28,41 +31,67 @@ function userFacingError(error: unknown, fallback: string) {
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn, userId } = useAuth();
   const configuredUserId = useRef<string | null>(null);
+  const identityVersion = useRef(0);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [currentOffering, setCurrentOffering] = useState<PurchasesOffering | null>(null);
+  const [isConfigured, setIsConfigured] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isConfigured = Platform.OS !== 'web' && Boolean(revenueCatApiKey) && Boolean(userId);
-
   const refresh = useCallback(async () => {
-    if (!isConfigured) return;
+    const expectedUserId = configuredUserId.current;
+    const version = identityVersion.current;
+    if (!expectedUserId || Platform.OS === 'web') return;
     setIsLoading(true);
     setError(null);
     try {
       const [offerings, info] = await Promise.all([Purchases.getOfferings(), Purchases.getCustomerInfo()]);
+      if (identityVersion.current !== version || configuredUserId.current !== expectedUserId) return;
       setCurrentOffering(offerings.current ?? null);
       setCustomerInfo(info);
     } catch (cause) {
-      setError(userFacingError(cause, 'Could not retrieve subscription information.'));
+      if (identityVersion.current === version && configuredUserId.current === expectedUserId) {
+        setCustomerInfo(null);
+        setCurrentOffering(null);
+        setError(userFacingError(cause, 'Could not retrieve subscription information.'));
+      }
     } finally {
-      setIsLoading(false);
+      if (identityVersion.current === version && configuredUserId.current === expectedUserId) {
+        setIsLoading(false);
+      }
     }
-  }, [isConfigured]);
+  }, []);
 
   useEffect(() => {
-    if (!isLoaded || Platform.OS === 'web') return;
-    if (!isSignedIn || !userId || !revenueCatApiKey) {
-      if (configuredUserId.current) {
-        void Purchases.logOut().catch(() => undefined);
-        configuredUserId.current = null;
-      }
+    identityVersion.current += 1;
+    const version = identityVersion.current;
+    let listener: ((info: CustomerInfo) => void) | null = null;
+
+    if (!isLoaded || Platform.OS === 'web') {
+      setIsConfigured(false);
+      setIsLoading(false);
       setCustomerInfo(null);
       setCurrentOffering(null);
       return;
     }
+    if (!isSignedIn || !userId || !revenueCatApiKey) {
+      setIsConfigured(false);
+      setIsLoading(false);
+      setCustomerInfo(null);
+      setCurrentOffering(null);
+      setError(!revenueCatApiKey ? 'Subscriptions are not configured for this platform.' : null);
+      if (configuredUserId.current) {
+        void Purchases.logOut().catch(() => undefined);
+        configuredUserId.current = null;
+      }
+      return;
+    }
 
-    let listener: ((info: CustomerInfo) => void) | null = null;
+    setIsConfigured(false);
+    setIsLoading(true);
+    setCustomerInfo(null);
+    setCurrentOffering(null);
+    setError(null);
     const configure = async () => {
       try {
         if (await Purchases.isConfigured()) {
@@ -70,29 +99,46 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         } else {
           Purchases.configure({ apiKey: revenueCatApiKey, appUserID: userId });
         }
+        if (identityVersion.current !== version) return;
         configuredUserId.current = userId;
-        listener = (info) => setCustomerInfo(info);
+        listener = (info) => {
+          if (identityVersion.current === version && configuredUserId.current === userId) setCustomerInfo(info);
+        };
         Purchases.addCustomerInfoUpdateListener(listener);
-        await refresh();
+        const [offerings, info] = await Promise.all([Purchases.getOfferings(), Purchases.getCustomerInfo()]);
+        if (identityVersion.current !== version || configuredUserId.current !== userId) return;
+        setCurrentOffering(offerings.current ?? null);
+        setCustomerInfo(info);
+        setIsConfigured(true);
       } catch (cause) {
+        if (identityVersion.current !== version) return;
+        configuredUserId.current = null;
+        setCustomerInfo(null);
+        setCurrentOffering(null);
         setError(userFacingError(cause, 'Could not configure subscriptions.'));
+      } finally {
+        if (identityVersion.current === version) setIsLoading(false);
       }
     };
     void configure();
     return () => {
       if (listener) Purchases.removeCustomerInfoUpdateListener(listener);
     };
-  }, [isLoaded, isSignedIn, refresh, userId]);
+  }, [isLoaded, isSignedIn, userId]);
 
   const purchasePackage = useCallback(async (pkg: PurchasesPackage) => {
+    const expectedUserId = configuredUserId.current;
+    const version = identityVersion.current;
     const { customerInfo: info } = await Purchases.purchasePackage(pkg);
-    setCustomerInfo(info);
+    if (identityVersion.current === version && configuredUserId.current === expectedUserId) setCustomerInfo(info);
     return info;
   }, []);
 
   const restorePurchases = useCallback(async () => {
+    const expectedUserId = configuredUserId.current;
+    const version = identityVersion.current;
     const info = await Purchases.restorePurchases();
-    setCustomerInfo(info);
+    if (identityVersion.current === version && configuredUserId.current === expectedUserId) setCustomerInfo(info);
     return info;
   }, []);
 

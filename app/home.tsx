@@ -1,7 +1,7 @@
 import { useAuth, useUser } from '@clerk/expo';
 import { fetch as expoFetch } from 'expo/fetch';
-import { Redirect, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -48,8 +48,9 @@ type CompletionActivityItem = {
 type ChatItem = ChatTextMessage | AssignmentChatItem | CompletionActivityItem;
 
 type ChatStreamPayload = {
-  conversationId?: unknown;
   assignmentId?: unknown;
+  code?: unknown;
+  conversationId?: unknown;
   dueAt?: unknown;
   error?: unknown;
   htmlUrl?: unknown;
@@ -62,6 +63,23 @@ type ChatStreamPayload = {
 };
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
+
+function getDeviceTimeContext() {
+  const now = new Date();
+  let timeZone: string | null = null;
+  try {
+    const resolvedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof resolvedTimeZone === 'string' && resolvedTimeZone) timeZone = resolvedTimeZone;
+  } catch {
+    // The numeric offset still gives the backend usable local-time context.
+  }
+
+  return {
+    now: now.toISOString(),
+    timeZone,
+    utcOffsetMinutes: -now.getTimezoneOffset(),
+  };
+}
 
 function markdownStyles(color: string, mutedColor: string, codeBackground: string, fontScale: number) {
   return {
@@ -256,15 +274,24 @@ export default function HomePage() {
   const router = useRouter();
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
   const listRef = useRef<FlatList<ChatItem>>(null);
+  const hasLoadedHistory = useRef(false);
+  const historyRequest = useRef<AbortController | null>(null);
+  const isSendingRef = useRef(false);
+  const getTokenRef = useRef(getToken);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [monthlyLimitReached, setMonthlyLimitReached] = useState(false);
   const [isCanvasConnected, setIsCanvasConnected] = useState<boolean | null>(null);
   const buddySize = getResponsiveBuddySize(screenWidth, screenHeight);
   const buddyScale = buddySize / BUDDY_BASE_SIZE;
   const controlScale = getResponsiveControlScale(screenWidth, screenHeight);
+
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
 
   useEffect(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: messages.length > 1 }));
@@ -273,6 +300,7 @@ export default function HomePage() {
   useEffect(() => subscribeToAccountDataCleared(() => {
     setMessages([]);
     setConversationId(null);
+    hasLoadedHistory.current = false;
     setError(null);
   }), []);
 
@@ -312,15 +340,16 @@ export default function HomePage() {
     };
   }, [getToken, isLoaded, isSignedIn]);
 
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || !apiUrl) {
+  useFocusEffect(useCallback(() => {
+    if (!isLoaded || !isSignedIn || !apiUrl || isSendingRef.current) {
       return;
     }
 
     const controller = new AbortController();
+    historyRequest.current = controller;
     void (async () => {
       try {
-        const token = await getToken();
+        const token = await getTokenRef.current();
         if (!token) return;
         const response = await fetch(`${apiUrl}/chat/history`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -330,11 +359,32 @@ export default function HomePage() {
           conversationId?: unknown;
           messages?: unknown;
         };
-        if (!response.ok || typeof body.conversationId !== 'string' || !Array.isArray(body.messages)) return;
+        if (
+          controller.signal.aborted ||
+          isSendingRef.current ||
+          !response.ok ||
+          typeof body.conversationId !== 'string' ||
+          !Array.isArray(body.messages)
+        ) return;
 
-        const restored = body.messages.filter((candidate): candidate is ChatTextMessage => {
+        const restored = body.messages.filter((candidate): candidate is ChatItem => {
           if (!candidate || typeof candidate !== 'object') return false;
-          const value = candidate as Partial<ChatTextMessage>;
+          const value = candidate as {
+            content?: unknown;
+            dueAt?: unknown;
+            htmlUrl?: unknown;
+            id?: unknown;
+            role?: unknown;
+            title?: unknown;
+          };
+          if (value.role === 'assignment') {
+            return (
+              typeof value.id === 'string' &&
+              typeof value.title === 'string' &&
+              (value.dueAt === null || typeof value.dueAt === 'string') &&
+              (value.htmlUrl === null || typeof value.htmlUrl === 'string')
+            );
+          }
           return (
             typeof value.id === 'string' &&
             (value.role === 'user' || value.role === 'assistant') &&
@@ -342,16 +392,24 @@ export default function HomePage() {
           );
         });
         setConversationId(body.conversationId);
-        setMessages((current) => current.length === 0 ? restored : current);
+        setMessages((current) => hasLoadedHistory.current
+          ? restored
+          : current.length === 0 ? restored : current);
+        hasLoadedHistory.current = true;
       } catch (historyError) {
         if (!(historyError instanceof Error && historyError.name === 'AbortError')) {
           console.warn('Could not load chat history');
         }
+      } finally {
+        if (historyRequest.current === controller) historyRequest.current = null;
       }
     })();
 
-    return () => controller.abort();
-  }, [getToken, isLoaded, isSignedIn]);
+    return () => {
+      controller.abort();
+      if (historyRequest.current === controller) historyRequest.current = null;
+    };
+  }, [isLoaded, isSignedIn]));
 
   if (!isLoaded) {
     return (
@@ -368,16 +426,20 @@ export default function HomePage() {
   const handleSend = async () => {
     const content = message.trim();
 
-    if (!content || isSending) {
+    if (!content || isSendingRef.current) {
       return;
     }
 
+    isSendingRef.current = true;
+    historyRequest.current?.abort();
+    historyRequest.current = null;
     const turnId = Date.now();
     const assistantMessageId = `${turnId}-assistant`;
     const userMessage: ChatTextMessage = { id: `${turnId}-user`, role: 'user', content };
     setMessages((current) => [...current, userMessage]);
     setMessage('');
     setError(null);
+    setMonthlyLimitReached(false);
     setIsSending(true);
 
     try {
@@ -400,11 +462,13 @@ export default function HomePage() {
         },
         body: JSON.stringify({
           message: content,
+          deviceTime: getDeviceTimeContext(),
           ...(conversationId ? { conversationId } : {}),
         }),
       });
       if (!chatResponse.ok) {
         const body = await chatResponse.json().catch(() => null) as ChatStreamPayload | null;
+        if (body?.code === 'monthly_limit_reached') setMonthlyLimitReached(true);
         throw new Error(typeof body?.error === 'string' ? body.error : 'cbud could not reply.');
       }
       if (!chatResponse.body) {
@@ -499,6 +563,7 @@ export default function HomePage() {
           updateAssistant(payload.message, true);
           receivedDone = true;
         } else if (event === 'error') {
+          if (payload.code === 'monthly_limit_reached') setMonthlyLimitReached(true);
           throw new Error(typeof payload.error === 'string' ? payload.error : 'cbud could not reply.');
         }
       };
@@ -528,6 +593,7 @@ export default function HomePage() {
         : item));
       setError(sendError instanceof Error ? sendError.message : 'cbud could not reply.');
     } finally {
+      isSendingRef.current = false;
       setIsSending(false);
     }
   };
@@ -584,9 +650,10 @@ export default function HomePage() {
               )}
             </View>
             {error ? (
-              <Text accessibilityLiveRegion="polite" style={styles.errorOverlay}>
-                {error}
-              </Text>
+              <View style={styles.errorOverlay}>
+                <Text accessibilityLiveRegion="polite" style={styles.errorText}>{error}</Text>
+                {monthlyLimitReached ? <Pressable accessibilityLabel="View plans" onPress={() => router.push('/plans')}><Text style={styles.plansLink}>view plans</Text></Pressable> : null}
+              </View>
             ) : null}
           </View>
           <View style={[styles.composer, { gap: 10 * controlScale }]}>
@@ -695,7 +762,9 @@ const styles = StyleSheet.create({
   assignmentLinkIcon: { color: '#fff', fontWeight: '800' },
   buddySection: { alignItems: 'center', transform: [{ translateY: 24 }] },
   buddyWordmark: { color: '#890620', fontWeight: '800', position: 'absolute' },
-  errorOverlay: { bottom: 8, color: '#890620', fontSize: 14, left: 20, position: 'absolute', right: 20, textAlign: 'center' },
+  errorOverlay: { alignItems: 'center', bottom: 8, left: 20, position: 'absolute', right: 20 },
+  errorText: { color: '#890620', fontSize: 14, textAlign: 'center' },
+  plansLink: { color: '#890620', fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
   composer: { alignItems: 'center', flexDirection: 'row' },
   iconButton: { alignItems: 'center', backgroundColor: '#890620', justifyContent: 'center' },
   iconButtonDisabled: { backgroundColor: '#bd8d87' },

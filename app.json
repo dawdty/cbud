@@ -14,7 +14,8 @@
     "android": {
       "package": "com.dawdty.cbud",
       "permissions": [
-        "com.android.vending.BILLING"
+        "com.android.vending.BILLING",
+        "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -36,6 +37,13 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#890620",
+          "defaultChannel": "cbud-reminders"
+        }
+      ],
       "expo-router",
       "expo-status-bar"
     ]
