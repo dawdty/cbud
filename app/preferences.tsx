@@ -44,6 +44,18 @@ function canvasProfileUrl(canvasUrl: string): string {
   return new URL('/profile/settings', url.origin).toString();
 }
 
+function confirmDeletion(title: string, message: string, buttonText: string, onConfirm: () => void): void {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+    return;
+  }
+
+  Alert.alert(title, message, [
+    { text: 'cancel', style: 'cancel' },
+    { text: buttonText, style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
 export default function PreferencesPage() {
   const { getToken, isLoaded, isSignedIn, signOut } = useAuth();
   const router = useRouter();
@@ -224,13 +236,11 @@ export default function PreferencesPage() {
   };
 
   const handleClearMemory = () => {
-    Alert.alert(
+    confirmDeletion(
       'clear memory?',
       'this deletes your saved chats and cached assignment context. your canvas connection stays enabled.',
-      [
-        { text: 'cancel', style: 'cancel' },
-        { text: 'clear', style: 'destructive', onPress: () => void clearMemory() },
-      ],
+      'clear',
+      () => void clearMemory(),
     );
   };
 
@@ -277,13 +287,11 @@ export default function PreferencesPage() {
   };
 
   const handleClearAccountData = () => {
-    Alert.alert(
+    confirmDeletion(
       'clear all app data?',
       'this permanently deletes your chats, detected assignments, cached context, and scheduled jobs. your canvas connection, access token, and usage or billing records stay saved.',
-      [
-        { text: 'cancel', style: 'cancel' },
-        { text: 'clear all', style: 'destructive', onPress: () => void clearAccountData() },
-      ],
+      'clear all',
+      () => void clearAccountData(),
     );
   };
 

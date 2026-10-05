@@ -209,7 +209,7 @@ Preferences exposes two deletion levels:
 - **Clear memory** deletes saved chats and cached assignment context while preserving the Canvas connection.
 - **Clear all data** deletes chats, detected assignments, cached context, and scheduled jobs while preserving Canvas authentication and usage/billing records.
 
-Successful deletion emits an in-app event so the mounted chat screen immediately clears its local conversation state. Destructive actions require a native confirmation alert.
+Successful deletion emits an in-app event so the mounted chat screen immediately clears its local conversation state. Destructive actions require a native alert on iOS/Android or a browser confirmation dialog on web; canceling leaves the data untouched.
 
 ## Backend contract
 
