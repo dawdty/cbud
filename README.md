@@ -169,6 +169,8 @@ Expo Router uses the files under `app/` as the route map.
 
 Existing users request a one-time code by email and verify it in the app. New users provide an email address and password, verify the emailed code, and then enter the authenticated application. The mascot follows the email cursor, closes its eyes for password and verification-code input, and reacts to validation failures.
 
+The custom sign-up form includes Clerk's `clerk-captcha` mount point. On web, this lets visitors complete an interactive bot-protection challenge when Clerk requires one; native clients do not render the browser challenge.
+
 The Clerk dashboard must allow the strategies used by the UI:
 
 - Email-code sign-in

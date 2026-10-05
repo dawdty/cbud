@@ -246,26 +246,29 @@ export default function App() {
               value={emailAddress}
             />
             {mode === 'sign-up' ? (
-              <TextInput
-                autoCapitalize="none"
-                autoComplete="new-password"
-                onChangeText={setPassword}
-                onFocus={() => setActiveField('password')}
-                onBlur={() => setActiveField(undefined)}
-                placeholder="password"
-                placeholderTextColor="#b6465f"
-                secureTextEntry
-                style={[
-                  styles.input,
-                  {
-                    borderRadius: 12 * controlScale,
-                    fontSize: 16 * controlScale,
-                    paddingHorizontal: 16 * controlScale,
-                    paddingVertical: 15 * controlScale,
-                  },
-                ]}
-                value={password}
-              />
+              <>
+                <TextInput
+                  autoCapitalize="none"
+                  autoComplete="new-password"
+                  onChangeText={setPassword}
+                  onFocus={() => setActiveField('password')}
+                  onBlur={() => setActiveField(undefined)}
+                  placeholder="password"
+                  placeholderTextColor="#b6465f"
+                  secureTextEntry
+                  style={[
+                    styles.input,
+                    {
+                      borderRadius: 12 * controlScale,
+                      fontSize: 16 * controlScale,
+                      paddingHorizontal: 16 * controlScale,
+                      paddingVertical: 15 * controlScale,
+                    },
+                  ]}
+                  value={password}
+                />
+                <View nativeID="clerk-captcha" />
+              </>
             ) : null}
             <PortalButton controlScale={controlScale} disabled={isSubmitting} label={isSubmitting ? 'one moment…' : mode === 'sign-in' ? 'send sign-in code' : 'create account'} onPress={handleSubmit} />
             <Pressable onPress={() => switchMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}>
