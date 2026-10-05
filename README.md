@@ -133,6 +133,21 @@ Restart the Expo development server after changing `.env` so the new values are 
 
 There is currently no automated test script.
 
+## Vercel web deployment
+
+The web export uses Expo Router's single-page output. `vercel.json` exports the web bundle to `dist` and rewrites browser routes to `index.html`; `.vercelignore` excludes local environment files from CLI uploads. The linked Vercel project is `edmundcb0-4544/cbud-demo`, serving `https://cbud-demo.vercel.app`. Its API is `https://api.104.236.252.95.sslip.io`; replace both URLs if the VM is recreated.
+
+Set these **Production** environment variables in the Vercel project before deploying:
+
+| Variable | Value |
+| --- | --- |
+| `EXPO_PUBLIC_API_URL` | Public HTTPS backend origin (no localhost or private LAN address) |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | Publishable key for the same Clerk application used by the backend |
+
+In the Vercel dashboard, use **Project Settings → Environment Variables** to set them for Production. If deploying Preview builds, set the same variables for Preview too. `EXPO_PUBLIC_` values are bundled at build time, so redeploy after changing either value. Never set backend or Clerk secret keys as public environment variables. Ensure the backend permits browser requests from the Vercel deployment origin.
+
+From this linked repository, deploy with `vercel --prod --archive=tgz --scope edmundcb0-4544`. The archive flag avoids Vercel's CLI per-file upload limit on this repository. On another machine, first run `vercel link --yes --scope edmundcb0-4544 --project cbud-demo` in this repository. Linking with the Vercel CLI can append an OIDC token to `.env.local`; keep that local file out of deployments and version control.
+
 ## Application routes
 
 Expo Router uses the files under `app/` as the route map.
