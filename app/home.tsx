@@ -669,7 +669,11 @@ export default function HomePage() {
                 },
               ]}
             >
-              <Text style={[styles.menu, { fontSize: 22 * controlScale, lineHeight: 25 * controlScale }]}>☰</Text>
+              <View style={[styles.menuBars, { transform: [{ scale: controlScale }] }]}>
+                <View style={styles.menuBar} />
+                <View style={styles.menuBar} />
+                <View style={styles.menuBar} />
+              </View>
             </Pressable>
             <TextInput
               accessibilityLabel="Message"
@@ -768,7 +772,8 @@ const styles = StyleSheet.create({
   composer: { alignItems: 'center', flexDirection: 'row' },
   iconButton: { alignItems: 'center', backgroundColor: '#890620', justifyContent: 'center' },
   iconButtonDisabled: { backgroundColor: '#bd8d87' },
-  menu: { color: '#fff' },
+  menuBars: { gap: 4 },
+  menuBar: { backgroundColor: '#fff', borderRadius: 1, height: 2, width: 18 },
   input: { backgroundColor: '#fff8f5', borderColor: '#cda49b', borderWidth: 1, color: '#2c0703', flex: 1 },
   arrow: { color: '#fff' },
 });

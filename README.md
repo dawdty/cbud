@@ -188,6 +188,8 @@ On entry, `/home` loads the current Canvas connection status and any saved text-
 
 Images in Markdown are intentionally disabled. Draft `delta` and `reset` events are consumed but not rendered; the UI keeps the activity indicator visible until the final answer arrives.
 
+The chat composer draws its menu icon with three centered bars rather than a font glyph, so its alignment stays consistent between Expo native and React Native Web.
+
 ### Canvas assignments
 
 Users connect Canvas from Preferences by entering their school's HTTPS Canvas host and a Canvas personal access token. The UI can open that Canvas instance's `/profile/settings` page to help the user create a token. The token is sent to the backend and cleared from frontend state after a successful connection.
